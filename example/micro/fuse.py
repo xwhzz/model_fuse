@@ -1,6 +1,6 @@
 import onnx
 import sys
-import netron
+# import netron
 import argparse
 sys.path.append('../..')
 
@@ -32,4 +32,4 @@ if __name__ == '__main__':
     add_op(g_1)
     fuse_graph = converter.from_graph(g_1)
     converter.export_file(fuse_graph, f'./model/fuse_{model_num}.onnx')
-    netron.start(f'./model/fuse_{model_num}.onnx')
+    # netron.start(f'./model/fuse_{model_num}.onnx')
