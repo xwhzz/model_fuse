@@ -5,6 +5,12 @@
 git apply ./runtime/ort/changes.patches
 ```
 
+2. Install python package
+
+```bash
+pip install -e .
+```
+
 # Example
 Currently implement custom CPU ops [Merge and Route] for onnxruntime.
 

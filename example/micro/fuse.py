@@ -1,8 +1,5 @@
 import onnx
-import sys
-# import netron
 import argparse
-sys.path.append('../..')
 
 from opt.converter import ONNXConverter
 from opt.pas import fuse_base, add_op
