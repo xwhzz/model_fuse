@@ -182,3 +182,25 @@ def remove_op(graph: Graph):
                         input2node[input_] = new_node_name
                         new_node = NodeInfo(op_typ, [input_] , [new_name], [], None)
                         graph.add_node(new_node, new_node_name)
+
+    remove_identity(graph)
+
+def remove_identity(graph: Graph):
+    remove_key = []
+    for node_name, node_info in graph.node_list.items():
+        if node_info.Type == "Identity":
+            node_input = node_info.Input[0]
+            node_output = node_info.Output[0]
+            remove_key.append(node_name)
+            try:
+                node_id = graph.output.index(node_output)
+                graph.output[node_id] = node_input
+            except:
+                for nn_name, nnode_info in graph.node_list.items():
+                    if nn_name != node_name:
+                        for idx, inp in enumerate(nnode_info.Input):
+                            if inp == node_output:
+                                nnode_info.Input[idx] = node_input
+
+    for key in remove_key:
+        del graph.node_list[key]
