@@ -1,5 +1,5 @@
 # Usage
-1. Download onnxruntime project from https://github.com/microsoft/onnxruntime, excute the following command and build onnxruntime from source.
+1. Download onnxruntime project from https://github.com/microsoft/onnxruntime, execute the following command and build onnxruntime from source.
 
 ```bash
 git apply ./runtime/ort/changes.patches
