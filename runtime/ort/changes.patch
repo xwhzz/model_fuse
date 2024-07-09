@@ -1,0 +1,131 @@
+diff --git a/onnxruntime/core/graph/graph.cc b/onnxruntime/core/graph/graph.cc
+index 0c1d79532f..42a71c9010 100644
+--- a/onnxruntime/core/graph/graph.cc
++++ b/onnxruntime/core/graph/graph.cc
+@@ -2867,13 +2867,27 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
+       // This should not happen: indicates incompleteness in ONNX inference.
+       std::stringstream ss;
+       ss << "index=" << operand_index;
++      bool flag = false;
+       for (auto it = op_formal_parameter.GetTypes().begin(); it != op_formal_parameter.GetTypes().end(); ++it) {
+         ss << "," << *(*it);
++        std::string type = *(*it);
++        if ((type == "tensor(float)") && ( "Route" == node.OpType() || ("Merge" == node.OpType() && output_def->Name().find("_sum") != std::string::npos))) {
++          inferred_type = *it;
++          flag = true;
++          break;
++        }
++        else if (type == "tensor(int32)" && "Merge" == node.OpType() && output_def->Name().find("_add") != std::string::npos) {
++          inferred_type = *it;
++          flag = true;
++          break;
++        }
+       }
+-      Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
++      if (!flag){
++        Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
+                     "Node (" + node_name + ") Op (" + node.OpType() + ") output arg (" +
+                         output_def->Name() + ") type inference failed, inferred types: " + ss.str());
+-      return status;
++        return status;
++      }
+     }
+ 
+     if ((existing_type != inferred_type) && (existing_type != nullptr)) {
+diff --git a/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc b/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc
+index ebef441350..933083ac45 100644
+--- a/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc
++++ b/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc
+@@ -6,6 +6,7 @@
+ #undef ORT_API_MANUAL_INIT
+ 
+ #include "onnxruntime_lite_custom_op.h"
++#include <iostream>
+ 
+ #define CUSTOM_ENFORCE(cond, msg)                                \
+   if (!(cond)) {                                                 \
+@@ -175,6 +176,65 @@ void Box(const Ort::Custom::Tensor<float>* float_in_1,
+   }
+ }
+ 
++Ort::Status Merge(const Ort::Custom::TensorArray& inputs, Ort::Custom::TensorArray& outputs) {
++
++    auto output_shape = inputs[0]->Shape();
++    output_shape[0] = 0;
++    for (size_t ith_input = 0; ith_input < inputs.Size(); ++ith_input) {
++        output_shape[0] += inputs[ith_input]->Shape()[0];
++    }
++    float* raw_output_0 = outputs.AllocateOutput<float>(0, output_shape);
++    
++    // 分配索引tensor
++    int32_t* raw_output_1 = outputs.AllocateOutput<int32_t>(1, {inputs.Size() + 1});
++    size_t index = 0;
++    size_t start = 0;
++    raw_output_1[0] = 0; // 第一个索引总是从0开始
++
++    // 按顺序复制每个输入tensor的数据到输出tensor
++    for (size_t ith_input = 0; ith_input < inputs.Size(); ++ith_input) {
++        const auto& input = inputs[ith_input];
++        const float* raw_input = reinterpret_cast<const float*>(input->DataRaw());
++        size_t num_elements = input->NumberOfElement();
++
++        // 更新索引tensor
++        index += input->Shape()[0];
++        raw_output_1[ith_input + 1] = static_cast<int32_t>(index);
++
++        // 复制数据
++        memcpy(raw_output_0 + start, raw_input, num_elements * sizeof(float));
++        start += num_elements;
++    }
++
++    return Ort::Status{nullptr};
++}
++
++
++Ort::Status Route(const Ort::Custom::Tensor<float>& data_tensor,
++                  const Ort::Custom::Tensor<int32_t>& index_tensor,
++                  Ort::Custom::TensorArray& outputs) {
++    const float* data_raw = data_tensor.Data();
++    const int32_t* index_raw = index_tensor.Data();
++    int64_t num_outputs = index_tensor.NumberOfElement() - 1;
++    int64_t scale = data_tensor.NumberOfElement() / data_tensor.Shape()[0];
++
++    for (int64_t i = 0; i < num_outputs; ++i) {
++        int64_t start_index = index_raw[i];
++        int64_t end_index = index_raw[i + 1];
++        int64_t num_elements = (end_index - start_index) * scale;
++
++        // Assume that all tensors have the same shape except for the batch dimension
++        std::vector<int64_t> output_shape = data_tensor.Shape();
++        output_shape[0] = end_index - start_index;
++
++        float* raw_output = outputs.AllocateOutput<float>(i, output_shape);
++        memcpy(raw_output, data_raw + start_index * scale, num_elements * sizeof(float));
++    }
++
++    return Ort::Status{nullptr};
++}
++
++
+ #if !defined(DISABLE_FLOAT8_TYPES)
+ struct KernelOneFloat8 {
+   void Compute(OrtKernelContext* context) {
+@@ -331,6 +391,9 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
+   static const std::unique_ptr<OrtLiteCustomOp> c_Select{Ort::Custom::CreateLiteCustomOp("Select", "CPUExecutionProvider", Select)};
+   static const std::unique_ptr<OrtLiteCustomOp> c_Filter{Ort::Custom::CreateLiteCustomOp<Filter>("Filter", "CPUExecutionProvider", 15, 17)};
+   static const std::unique_ptr<OrtLiteCustomOp> c_Box{Ort::Custom::CreateLiteCustomOp("Box", "CPUExecutionProvider", Box)};
++
++  static const std::unique_ptr<OrtLiteCustomOp> c_Merge{Ort::Custom::CreateLiteCustomOp("Merge", "CPUExecutionProvider", Merge)};
++  static const std::unique_ptr<OrtLiteCustomOp> c_Route{Ort::Custom::CreateLiteCustomOp("Route", "CPUExecutionProvider", Route)};
+   static const std::unique_ptr<OrtLiteCustomOp> c_CopyTensorArrayAllVariadic{Ort::Custom::CreateLiteCustomOp("CopyTensorArrayAllVariadic", "CPUExecutionProvider", CopyTensorArrayAllVariadic<float>)};
+   static const std::unique_ptr<OrtLiteCustomOp> c_CopyTensorArrayCombined{Ort::Custom::CreateLiteCustomOp("CopyTensorArrayCombined", "CPUExecutionProvider", CopyTensorArrayCombined<float>)};
+ 
+@@ -353,6 +416,8 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
+   domain.Add(c_CopyTensorArrayAllVariadic.get());
+   domain.Add(c_CopyTensorArrayCombined.get());
+   domain.Add(c_AtterTesterIntFloat.get());
++  domain.Add(c_Merge.get());
++  domain.Add(c_Route.get());
+   domain.Add(&c_AtterTesterString);
+ 
+ #if !defined(DISABLE_FLOAT8_TYPES)
