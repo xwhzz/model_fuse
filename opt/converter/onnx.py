@@ -28,9 +28,7 @@ class ONNXConverter(Converter):
                 if add_init:
                     graph.node.remove(node)
 
-    def get_node(self, node: onnx.NodeProto):
-        ## attr -> other 
-
+    def get_node(self, node: onnx.NodeProto, graph: Graph):
         node_name = node.name
         node_type = node.op_type
         node_input = list(node.input)
@@ -40,10 +38,10 @@ class ONNXConverter(Converter):
         parameters = []
         new_input = []
         for inp in node_input:
-            if "weight" in inp or "bias" in inp:
-                parameters.append(inp)
-            else:
+            if graph.name2para.get(inp, None) is None:
                 new_input.append(inp)
+            else:
+                parameters.append(inp)
 
         return NodeInfo(node_type, new_input, node_output, parameters, node_other), node_name
 
@@ -97,14 +95,14 @@ class ONNXConverter(Converter):
         g.input.extend([inp.name for inp in model.input])
         g.output.extend([out.name for out in model.output])
 
-        for node in model.node:
-            nod, name = self.get_node(node)
-            g.add_node(nod, name)
 
         for init in model.initializer:
             param, name = self.get_parameter(init, model)
             g.add_parameters(param, name)
-        
+
+        for node in model.node:
+            nod, name = self.get_node(node, g)
+            g.add_node(nod, name)
         return g
 
     def from_graph(self, graph: Graph, num: int=2) -> onnx.GraphProto:
