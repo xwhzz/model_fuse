@@ -1,8 +1,9 @@
 import onnx
 import argparse
+import netron
 
 from opt.converter import ONNXConverter
-from opt.pas import fuse_base, add_op
+from opt.pas import fuse_base, add_op, remove_op
 
 
 def get_graph(path: str, index: int):
@@ -27,6 +28,7 @@ if __name__ == '__main__':
         g_1 = fuse_base(g_1, g)
     
     add_op(g_1)
+    remove_op(g_1)
     fuse_graph = converter.from_graph(g_1)
     converter.export_file(fuse_graph, f'./model/fuse_{model_num}.onnx')
-    # netron.start(f'./model/fuse_{model_num}.onnx')
+    netron.start(f'./model/fuse_{model_num}.onnx')

@@ -55,8 +55,10 @@ class Graph:
         self.input = []
         self.output = []
 
-    def add_node(self, node: NodeInfo, name):
+
+    def add_node(self, node: NodeInfo, name: str):
         self.node_list[name] = node
+        
     
     def add_parameters(self, info: ParameterInfo, name: str):
         if info.hash not in self.paramter_list:
