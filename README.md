@@ -25,3 +25,12 @@ python fuse.py --num 5
 python test_runtime.py
 ```
 
+In the directory `./example/transformer`, you can follow the instruction below to test the functionality. Here we choose the two decode layers of llama model and its lora variant as our test models. 
+
+```bash
+python generate.py
+
+python fuse.py
+
+python test_runtime.py
+```
