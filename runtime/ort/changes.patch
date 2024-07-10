@@ -1,3 +1,33 @@
+diff --git a/include/onnxruntime/core/framework/tensor_shape.h b/include/onnxruntime/core/framework/tensor_shape.h
+index 82a1c1de83..173815fffb 100644
+--- a/include/onnxruntime/core/framework/tensor_shape.h
++++ b/include/onnxruntime/core/framework/tensor_shape.h
+@@ -112,6 +112,8 @@ class TensorShape {
+    */
+   int64_t Size() const;
+ 
++  int64_t GoodSize() const;
++
+   /**
+      Return the total number of elements up to the specified dimension.
+      If the dimension interval is empty (dimension == 0), return 1.
+diff --git a/onnxruntime/core/framework/tensor_shape.cc b/onnxruntime/core/framework/tensor_shape.cc
+index 399dc1a2a4..124ce14d29 100644
+--- a/onnxruntime/core/framework/tensor_shape.cc
++++ b/onnxruntime/core/framework/tensor_shape.cc
+@@ -60,6 +60,12 @@ int64_t TensorShape::Size() const {
+   return size;
+ }
+ 
++int64_t TensorShape::GoodSize() const {
++  int64_t size = SizeHelper(1, values_.size());
++  // should we cache the size? as multiple operation may be expensive.
++  return size;
++}
++
+ int64_t TensorShape::SizeToDimension(size_t dimension) const {
+   const size_t num_dims = values_.size();
+   ORT_ENFORCE(dimension <= num_dims,
 diff --git a/onnxruntime/core/graph/graph.cc b/onnxruntime/core/graph/graph.cc
 index 0c1d79532f..42a71c9010 100644
 --- a/onnxruntime/core/graph/graph.cc
@@ -32,6 +62,46 @@ index 0c1d79532f..42a71c9010 100644
      }
  
      if ((existing_type != inferred_type) && (existing_type != nullptr)) {
+diff --git a/onnxruntime/core/providers/cpu/tensor/reshape_helper.h b/onnxruntime/core/providers/cpu/tensor/reshape_helper.h
+index d7ceda16e6..44bb8c4ce4 100644
+--- a/onnxruntime/core/providers/cpu/tensor/reshape_helper.h
++++ b/onnxruntime/core/providers/cpu/tensor/reshape_helper.h
+@@ -18,6 +18,7 @@ class ReshapeHelper {
+     auto nDims = requested_shape.size();
+     ptrdiff_t unknown_dim = -1;
+     int64_t size = 1;
++    int64_t good_size = 1;
+     for (size_t i = 0; i < nDims; ++i) {
+       ORT_ENFORCE(requested_shape[i] >= -1, "A dimension cannot be less than -1, got ", requested_shape[i]);
+       if (requested_shape[i] == -1) {
+@@ -30,16 +31,23 @@ class ReshapeHelper {
+                       " the dimension size of the input tensor.");
+           requested_shape[i] = input_shape[i];
+         }
++        if (requested_shape[i] !=0){
++          good_size *= requested_shape[i];
++        }
+         size *= requested_shape[i];
+       }
+     }
+ 
+     if (unknown_dim != -1) {
+       // calculate unknown dimension
+-      ORT_ENFORCE(size != 0 && (input_shape_size % size) == 0,
+-                  "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape,
+-                  ", requested shape:", TensorShape(requested_shape));
+-      requested_shape[unknown_dim] = input_shape_size / size;
++      if (input_shape[0] == 0 && unknown_dim != 0) {
++        requested_shape[unknown_dim] = input_shape.GoodSize() / good_size;
++      } else {
++        ORT_ENFORCE(size != 0 && (input_shape_size % size) == 0,
++                    "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape,
++                    ", requested shape:", TensorShape(requested_shape));
++        requested_shape[unknown_dim] = input_shape_size / size;
++      }
+     } else {
+       // check if the output shape is valid.
+       ORT_ENFORCE(input_shape_size == size,
 diff --git a/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc b/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc
 index ebef441350..933083ac45 100644
 --- a/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc
