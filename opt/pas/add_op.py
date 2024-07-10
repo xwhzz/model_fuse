@@ -8,11 +8,11 @@ def add_op(graph: Graph):
     for node_name, node_info in node_list.items():
         if node_info.has_weight() and len(node_info.Input) > 1:
             assert len(node_info.Input) == len(node_info.Output)
-            merge_op = NodeInfo('Merge', node_info.Input, [node_info.Input[0] + '_sum', node_name + '_add'], [], None)
-            route_op = NodeInfo('Route', [node_info.Output[0] + '_sum', node_name + '_add'], node_info.Output, [], None)
+            merge_op = NodeInfo('Merge', node_info.Input, [node_name + '_sum', node_name + '_add'], [], None)
+            route_op = NodeInfo('Route', [node_name + '__sum', node_name + '_add'], node_info.Output, [], None)
             op = graph.node_list[node_name]
-            op.Input = [node_info.Input[0]+'_sum']
-            op.Output = [node_info.Output[0]+'_sum']
+            op.Input = [node_name+'_sum']
+            op.Output = [node_name+'__sum']
             graph.add_node(merge_op, node_name + '_merge')
             graph.add_node(route_op, node_name + '_route')
     

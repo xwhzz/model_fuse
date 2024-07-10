@@ -29,19 +29,13 @@ class ParameterInfo:
     value: np.ndarray
     node: str
 
-
     @staticmethod
     def get_hash(value: np.ndarray):
-        hash = 0
-        for element in value.flatten():
-            element_str = str(element).replace('.','').replace('-', '').replace('e','')
-            hash += sum(int(bit) for bit in element_str) % (2 ** 30)
-        return hash        
+        return int(np.sum(value)) % (2 ** 30)
 
     @classmethod
     def get_info(cls, value: np.ndarray, node: str):
         hash = cls.get_hash(value)
-
         return cls(hash, value, node)
 
 

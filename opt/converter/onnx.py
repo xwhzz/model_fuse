@@ -126,5 +126,6 @@ class ONNXConverter(Converter):
     @staticmethod
     def export_file(graph: onnx.GraphProto, file_name: str='fused_model.onnx'):
         model = onnx.helper.make_model(graph)
+        model.opset_import[0].version = 14
         onnx.save(model, file_name)
 

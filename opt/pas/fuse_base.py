@@ -37,7 +37,9 @@ def fuse_base(g_1: Graph, g_2: Graph) -> Graph:
             fuse_graph.node_list[node_name] = node_info
             for para in node_info.Parameters:
                 para_info = g_2.paramter_list[g_2.name2para[para]][para]
-                fuse_graph.paramter_list[para_info.hash] = {}#[para] = para_info
+                # fuse_graph.paramter_list[para_info.hash] = {}#[para] = para_info
+                if para_info.hash not in fuse_graph.paramter_list:
+                    fuse_graph.paramter_list[para_info.hash] = {}
                 fuse_graph.paramter_list[para_info.hash][para] = para_info
                 fuse_graph.name2para[para] = para_info.hash
     

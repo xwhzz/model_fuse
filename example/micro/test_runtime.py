@@ -6,7 +6,7 @@ np.random.seed(0)
 def run_fuse(model_num: int, index: list[int], data):
     so = ort.SessionOptions()
 
-    so.register_custom_ops_library('./libcustom_op_library.so')
+    so.register_custom_ops_library('../libcustom_op_library.so')
 
     onnx_model = onnx.load(f'./model/fuse_{model_num}.onnx')
 

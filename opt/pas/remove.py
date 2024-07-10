@@ -46,7 +46,10 @@ def remove_op(graph: Graph):
                 for inp in node_info.Input:
                     if inp in output2node:
                         # 得到merge的上一层节点
-                        before_merge = graph.node_list[output2node[inp]]
+                        try:
+                            before_merge = graph.node_list[output2node[inp]]
+                        except:
+                            break
                         # 我们假设上一层节点的输出只能作为一个节点的输入
                         if before_merge.Output[0] in input2node:
                             op_type.append(before_merge.Type)
