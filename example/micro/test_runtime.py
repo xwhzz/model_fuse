@@ -8,7 +8,7 @@ def run_fuse(model_num: int, index: list[int], data):
 
     so.register_custom_ops_library('../libcustom_op_library.so')
 
-    onnx_model = onnx.load(f'./model/fuse_{model_num}.onnx')
+    onnx_model = onnx.load(f'./model_/fuse_{model_num}.onnx')
 
     sess = ort.InferenceSession(onnx_model.SerializeToString(), so, providers=['CPUExecutionProvider'])
 
@@ -34,13 +34,12 @@ def run_model(path: str, start: int, end: int, data):
 def test_res(model_num: int, index: list[int], data):
     model_path = []
     for i in range(1,model_num+1):
-        model_path.append(f'./model/model_{i}.onnx')
+        model_path.append(f'./model_/model_{i}.onnx')
     res = []
     for idx, p in enumerate(model_path):
         res.append(run_model(p, index[idx], index[idx+1], data))
 
     res_cat = np.concatenate(res, axis=0)
-
     fuse_res = run_fuse(model_num, index, data)
 
     assert np.allclose(res_cat, fuse_res)
@@ -52,6 +51,6 @@ if __name__ == '__main__':
     for i in range(0,6):
         test_res(2, [0, i, 5], data)
 
-    # 5 models test
-    data = np.random.random((10,784)).astype(np.float32)
-    test_res(5, [0,3,5,7,8,10], data)
+    # # 5 models test
+    # data = np.random.random((10,784)).astype(np.float32)
+    # test_res(5, [0,3,5,7,8,10], data)

@@ -28,40 +28,6 @@ index 399dc1a2a4..124ce14d29 100644
  int64_t TensorShape::SizeToDimension(size_t dimension) const {
    const size_t num_dims = values_.size();
    ORT_ENFORCE(dimension <= num_dims,
-diff --git a/onnxruntime/core/graph/graph.cc b/onnxruntime/core/graph/graph.cc
-index 0c1d79532f..42a71c9010 100644
---- a/onnxruntime/core/graph/graph.cc
-+++ b/onnxruntime/core/graph/graph.cc
-@@ -2867,13 +2867,27 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
-       // This should not happen: indicates incompleteness in ONNX inference.
-       std::stringstream ss;
-       ss << "index=" << operand_index;
-+      bool flag = false;
-       for (auto it = op_formal_parameter.GetTypes().begin(); it != op_formal_parameter.GetTypes().end(); ++it) {
-         ss << "," << *(*it);
-+        std::string type = *(*it);
-+        if ((type == "tensor(float)") && ( "Route" == node.OpType() || ("Merge" == node.OpType() && output_def->Name().find("_sum") != std::string::npos))) {
-+          inferred_type = *it;
-+          flag = true;
-+          break;
-+        }
-+        else if (type == "tensor(int32)" && "Merge" == node.OpType() && output_def->Name().find("_add") != std::string::npos) {
-+          inferred_type = *it;
-+          flag = true;
-+          break;
-+        }
-       }
--      Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
-+      if (!flag){
-+        Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
-                     "Node (" + node_name + ") Op (" + node.OpType() + ") output arg (" +
-                         output_def->Name() + ") type inference failed, inferred types: " + ss.str());
--      return status;
-+        return status;
-+      }
-     }
- 
-     if ((existing_type != inferred_type) && (existing_type != nullptr)) {
 diff --git a/onnxruntime/core/providers/cpu/tensor/reshape_helper.h b/onnxruntime/core/providers/cpu/tensor/reshape_helper.h
 index d7ceda16e6..44bb8c4ce4 100644
 --- a/onnxruntime/core/providers/cpu/tensor/reshape_helper.h
@@ -103,7 +69,7 @@ index d7ceda16e6..44bb8c4ce4 100644
        // check if the output shape is valid.
        ORT_ENFORCE(input_shape_size == size,
 diff --git a/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc b/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc
-index ebef441350..933083ac45 100644
+index ebef441350..5dee50c3e1 100644
 --- a/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc
 +++ b/onnxruntime/test/testdata/custom_op_library/cpu/cpu_ops.cc
 @@ -6,6 +6,7 @@
@@ -114,21 +80,24 @@ index ebef441350..933083ac45 100644
  
  #define CUSTOM_ENFORCE(cond, msg)                                \
    if (!(cond)) {                                                 \
-@@ -175,6 +176,65 @@ void Box(const Ort::Custom::Tensor<float>* float_in_1,
+@@ -175,6 +176,172 @@ void Box(const Ort::Custom::Tensor<float>* float_in_1,
    }
  }
  
-+Ort::Status Merge(const Ort::Custom::TensorArray& inputs, Ort::Custom::TensorArray& outputs) {
-+
++// Improve the two ops.
++// template <typename T>
++struct Merge {
++  Merge(const OrtApi*, const OrtKernelInfo*) {}
++Ort::Status Compute(const Ort::Custom::TensorArray& inputs, Ort::Custom::Tensor<float>& output1, Ort::Custom::Tensor<int32_t>& output2) {
 +    auto output_shape = inputs[0]->Shape();
 +    output_shape[0] = 0;
 +    for (size_t ith_input = 0; ith_input < inputs.Size(); ++ith_input) {
 +        output_shape[0] += inputs[ith_input]->Shape()[0];
 +    }
-+    float* raw_output_0 = outputs.AllocateOutput<float>(0, output_shape);
-+    
++    float* raw_output_0 = output1.Allocate(output_shape); //output1.AllocateOutput<T>(0, output_shape);
++
 +    // 分配索引tensor
-+    int32_t* raw_output_1 = outputs.AllocateOutput<int32_t>(1, {inputs.Size() + 1});
++    int32_t* raw_output_1 = output2.Allocate({inputs.Size() + 1}); //outputs.AllocateOutput<int32_t>(1, {inputs.Size() + 1});
 +    size_t index = 0;
 +    size_t start = 0;
 +    raw_output_1[0] = 0; // 第一个索引总是从0开始
@@ -151,51 +120,167 @@ index ebef441350..933083ac45 100644
 +    return Ort::Status{nullptr};
 +}
 +
++  // size_t GetInputfloatypeCount() const { return 1; };  // One input
++  // OrtCustomOpInputOutputCharacteristic GetInputCharacteristic(size_t index) const noexcept {
++  //   return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;  // The input is variadic (like printf)
++  // }
++  // ONNXTensorElementDataType GetInputType(size_t /*index*/) const {
++  //   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;  // Input can be any type
++  // };
++  // bool GetVariadicInputHomogeneity() const {
++  //   return true;  // Each input argument can be of different types (heterogeneous).
++  // }
 +
-+Ort::Status Route(const Ort::Custom::Tensor<float>& data_tensor,
-+                  const Ort::Custom::Tensor<int32_t>& index_tensor,
-+                  Ort::Custom::TensorArray& outputs) {
-+    const float* data_raw = data_tensor.Data();
-+    const int32_t* index_raw = index_tensor.Data();
-+    int64_t num_outputs = index_tensor.NumberOfElement() - 1;
-+    int64_t scale = data_tensor.NumberOfElement() / data_tensor.Shape()[0];
++  // size_t GetOutputTypeCount() const { return 2; };  // One output only
++  // ONNXTensorElementDataType GetOutputType(size_t index) const {
++  //   // the second output type is assigned to INT.
++  //   if (index == 1){
++  //     return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
++  //   }
++  //   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;  // Output can be any type
++  // };
++};
++
++// template <typename T>
++struct RouteKernel {
++  // Route(const OrtApi*, const OrtKernelInfo*) {}
++  void Compute(OrtKernelContext* context) {
++    // 获取输入张量
++    const Ort::KernelContext ctx(context);
++    const auto& data_tensor = ctx.GetInput(0);
++    const auto& index_tensor = ctx.GetInput(1);
++
++    const float* data_raw = data_tensor.GetTensorData<float>();
++    const int32_t* index_raw = index_tensor.GetTensorData<int32_t>();
++
++    int64_t num_outputs = index_tensor.GetTensorTypeAndShapeInfo().GetElementCount() - 1;
++    int64_t scale = data_tensor.GetTensorTypeAndShapeInfo().GetElementCount() / data_tensor.GetTensorTypeAndShapeInfo().GetShape()[0];
 +
 +    for (int64_t i = 0; i < num_outputs; ++i) {
-+        int64_t start_index = index_raw[i];
-+        int64_t end_index = index_raw[i + 1];
-+        int64_t num_elements = (end_index - start_index) * scale;
++      int64_t start_index = index_raw[i];
++      int64_t end_index = index_raw[i + 1];
++      int64_t num_elements = (end_index - start_index) * scale;
 +
-+        // Assume that all tensors have the same shape except for the batch dimension
-+        std::vector<int64_t> output_shape = data_tensor.Shape();
-+        output_shape[0] = end_index - start_index;
++      // 假设所有张量除了批处理维度外形状相同
++      std::vector<int64_t> output_shape = data_tensor.GetTensorTypeAndShapeInfo().GetShape();
++      output_shape[0] = end_index - start_index;
 +
-+        float* raw_output = outputs.AllocateOutput<float>(i, output_shape);
-+        memcpy(raw_output, data_raw + start_index * scale, num_elements * sizeof(float));
++      // 创建输出张量
++      auto output_tensor = ctx.GetOutput(i, output_shape);
++      float* raw_output = output_tensor.GetTensorMutableData<float>();
++
++      memcpy(raw_output, data_raw + start_index * scale, num_elements * sizeof(float));
++    }
++  }
++
++  // Route(const OrtApi*, const OrtKernelInfo*) {}
++  // void Compute(const Ort::Custom::Tensor<float>& data_tensor,
++  //                 const Ort::Custom::Tensor<int32_t>& index_tensor,
++  //                 Ort::Custom::TensorArray& outputs) {
++  //   const float* data_raw = data_tensor.Data();
++  //   const int32_t* index_raw = index_tensor.Data();
++  //   int64_t num_outputs = index_tensor.NumberOfElement() - 1;
++  //   int64_t scale = data_tensor.NumberOfElement() / data_tensor.Shape()[0];
++
++  //   for (int64_t i = 0; i < num_outputs; ++i) {
++  //       int64_t start_index = index_raw[i];
++  //       int64_t end_index = index_raw[i + 1];
++  //       int64_t num_elements = (end_index - start_index) * scale;
++
++  //       // Assume that all tensors have the same shape except for the batch dimension
++  //       std::vector<int64_t> output_shape = data_tensor.Shape();
++  //       output_shape[0] = end_index - start_index;
++
++  //       float* raw_output = outputs.AllocateOutput<float>(i, output_shape);
++  //       memcpy(raw_output, data_raw + start_index * scale, num_elements * sizeof(float));
++  //   }
++
++
++    //return Ort::Status{nullptr};
++  // }
++  // size_t GetInputTypeCount() const { return 2; }
++  // ONNXTensorElementDataType GetInputType(size_t index) const {
++  //   if (index == 0) {
++  //     return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
++  //   }
++
++  //   return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
++  // }
++
++  // size_t GetOutputTypeCount() const { return 1; }
++  // OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t index) const noexcept {
++  //   return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;  // The output is variadic
++  // }
++
++  // ONNXTensorElementDataType GetOutputType(size_t index) const {
++  //   return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; //UNDEFINED;  // Output can be any type
++  // }
++
++  // bool GetVariadicOuputHomogeneity() const {
++  //   return true;  // Each output operand can be of different type (heterogeneous).
++  // }
++};
++
++struct Route: Ort::CustomOpBase<Route, RouteKernel> {
++    void* CreateKernel(const OrtApi& /* api */, const OrtKernelInfo* /* info */) const {
++    return std::make_unique<RouteKernel>().release();
++  };
++  const char* GetName() const { return "Route"; };
++  const char* GetExecutionProviderType() const { return "CPUExecutionProvider"; };
++  size_t GetInputTypeCount() const { return 2; }
++  ONNXTensorElementDataType GetInputType(size_t index) const {
++    if (index == 0) {
++      return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
 +    }
 +
-+    return Ort::Status{nullptr};
-+}
++    return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32;
++  }
 +
++  size_t GetOutputTypeCount() const { return 1; }
++  OrtCustomOpInputOutputCharacteristic GetOutputCharacteristic(size_t index) const noexcept {
++    return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_VARIADIC;  // The output is variadic
++  }
++
++  ONNXTensorElementDataType GetOutputType(size_t index) const {
++    return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT; //UNDEFINED;  // Output can be any type
++  }
++
++  bool GetVariadicOuputHomogeneity() const {
++    return true;  // Each output operand can be of different type (heterogeneous).
++  }
++};
 +
  #if !defined(DISABLE_FLOAT8_TYPES)
  struct KernelOneFloat8 {
    void Compute(OrtKernelContext* context) {
-@@ -331,6 +391,9 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
+@@ -331,6 +498,10 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
    static const std::unique_ptr<OrtLiteCustomOp> c_Select{Ort::Custom::CreateLiteCustomOp("Select", "CPUExecutionProvider", Select)};
    static const std::unique_ptr<OrtLiteCustomOp> c_Filter{Ort::Custom::CreateLiteCustomOp<Filter>("Filter", "CPUExecutionProvider", 15, 17)};
    static const std::unique_ptr<OrtLiteCustomOp> c_Box{Ort::Custom::CreateLiteCustomOp("Box", "CPUExecutionProvider", Box)};
 +
-+  static const std::unique_ptr<OrtLiteCustomOp> c_Merge{Ort::Custom::CreateLiteCustomOp("Merge", "CPUExecutionProvider", Merge)};
-+  static const std::unique_ptr<OrtLiteCustomOp> c_Route{Ort::Custom::CreateLiteCustomOp("Route", "CPUExecutionProvider", Route)};
++  static const std::unique_ptr<OrtLiteCustomOp> c_Merge{Ort::Custom::CreateLiteCustomOp<Merge>("Merge", "CPUExecutionProvider")};
++  // static const std::unique_ptr<OrtLiteCustomOp> c_Route{Ort::Custom::CreateLiteCustomOp<Route>("Route", "CPUExecutionProvider")};
++
    static const std::unique_ptr<OrtLiteCustomOp> c_CopyTensorArrayAllVariadic{Ort::Custom::CreateLiteCustomOp("CopyTensorArrayAllVariadic", "CPUExecutionProvider", CopyTensorArrayAllVariadic<float>)};
    static const std::unique_ptr<OrtLiteCustomOp> c_CopyTensorArrayCombined{Ort::Custom::CreateLiteCustomOp("CopyTensorArrayCombined", "CPUExecutionProvider", CopyTensorArrayCombined<float>)};
  
-@@ -353,6 +416,8 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
+@@ -341,6 +512,7 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
+   static const CustomOpOneFloat8 c_CustomOpOneFloat8;
+   static const std::unique_ptr<OrtLiteCustomOp> c_FilterFloat8{Ort::Custom::CreateLiteCustomOp("FilterFloat8", "CPUExecutionProvider", FilterFloat8)};
+ #endif
++  static const Route c_Route;
+ 
+   domain.Add(c_CustomOpOne.get());
+   domain.Add(c_CustomOpTwo.get());
+@@ -353,8 +525,10 @@ void RegisterOps(Ort::CustomOpDomain& domain) {
    domain.Add(c_CopyTensorArrayAllVariadic.get());
    domain.Add(c_CopyTensorArrayCombined.get());
    domain.Add(c_AtterTesterIntFloat.get());
 +  domain.Add(c_Merge.get());
-+  domain.Add(c_Route.get());
++  // domain.Add(c_Route.get());
    domain.Add(&c_AtterTesterString);
- 
+-
++  domain.Add(&c_Route);
  #if !defined(DISABLE_FLOAT8_TYPES)
+   domain.Add(&c_CustomOpOneFloat8);
+   domain.Add(c_FilterFloat8.get());

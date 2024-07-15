@@ -22,6 +22,11 @@ class NodeInfo:
 
     def has_weight(self) -> bool:
         return len(self.Parameters) > 0
+    
+    def can_batch(self) -> bool:
+        return len(self.Input) == 1 and len(self.Output) == 1
+    
+
 
 @dataclass
 class ParameterInfo:
@@ -48,6 +53,7 @@ class Graph:
 
         self.input = []
         self.output = []
+
 
 
     def add_node(self, node: NodeInfo, name: str):

@@ -20,7 +20,7 @@ peft_model = get_peft_model(model, peft_config)
 
 for name, param in peft_model.named_parameters():
     if 'lora' in name:
-        torch.nn.init.normal_(param, mean=0.0, std=0.02)
+        torch.nn.init.normal_(param, mean=0.0, std=1.0)
 
 class Net(nn.Module):
     def __init__(self, model_list: nn.ModuleList):
@@ -39,7 +39,7 @@ decoder_layer_2 = peft_model.base_model.model.model.layers
 model_1 = Net(decoder_layer_1[:2])
 model_2 = Net(decoder_layer_2[:2])
 
-input_tensor = torch.rand((1,20,4096),dtype=torch.float32)
+input_tensor = torch.rand((1,10,4096),dtype=torch.float32)
 
 torch.onnx.export(model_1,
                   input_tensor,
@@ -48,8 +48,8 @@ torch.onnx.export(model_1,
                   opset_version=14,
                   input_names=['input'],
                   output_names=['output'],
-                  dynamic_axes={'input': {0: 'batch_size'},
-                                'output': {0: 'batch_size'}})
+                  dynamic_axes={'input': {0: 'batch_size', 1: 'sequence_length'},
+                                'output': {0: 'batch_size', 1: 'sequence_length'}})
 
 torch.onnx.export(model_2,
                   input_tensor,
@@ -58,5 +58,5 @@ torch.onnx.export(model_2,
                   opset_version=14,
                   input_names=['input'],
                   output_names=['output'],
-                  dynamic_axes={'input': {0: 'batch_size'},
-                                'output': {0: 'batch_size'}})
+                  dynamic_axes={'input': {0: 'batch_size', 1: 'sequence_length'},
+                                'output': {0: 'batch_size', 1: 'sequence_length'}})

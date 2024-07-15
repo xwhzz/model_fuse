@@ -2,7 +2,9 @@ from opt.graph import *
 
 def fuse_base(g_1: Graph, g_2: Graph) -> Graph:
     fuse_graph = g_1
-
+    """
+    可以fuse constant的节点
+    """
     for node_name, node_info in g_2.node_list.items():
         has_same = False
         if node_info.has_weight():
@@ -32,7 +34,6 @@ def fuse_base(g_1: Graph, g_2: Graph) -> Graph:
                 node_fuse.Input.append(node_info.Input[0])
                 node_fuse.Output.append(node_info.Output[0])
                 # node_fuse.num += 1
-
         if not has_same:   
             fuse_graph.node_list[node_name] = node_info
             for para in node_info.Parameters:
