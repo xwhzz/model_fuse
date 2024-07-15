@@ -14,7 +14,7 @@ pip install -e .
 # Example
 Currently implement custom CPU ops [Merge and Route] for onnxruntime.
 
-In the directory `./exmple/micro`, you can find some files. You can follow the instruction below to test the functionality for microbenchmark.
+In the directory `./exmple/micro`, you can find some files. Follow the instruction below to test the functionality for microbenchmark.
 
 ```bash
 python generate.py
@@ -34,3 +34,5 @@ python fuse.py
 
 python test_runtime.py
 ```
+
+Additionally, we provide a script `./example/micro/cons2init.py` that convert `Constant` nodes into initializers. You can leverage this script to make a graph without `Constant` nodes to use our fuse algorithm.
