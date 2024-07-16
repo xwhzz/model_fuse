@@ -18,13 +18,14 @@ class NodeInfo:
 
     Other: Any
 
+    Can_batch: bool | None = None
     # num: int = 1
 
     def has_weight(self) -> bool:
         return len(self.Parameters) > 0
     
-    def can_batch(self) -> bool:
-        return len(self.Input) == 1 and len(self.Output) == 1
+    def can_batch(self, name2shape) -> bool:
+        return len(self.Input) == 1 and len(self.Output) == 1 and name2shape[self.Input[0]] and name2shape[self.Output[0]]
     
 
 
@@ -54,11 +55,15 @@ class Graph:
         self.input = []
         self.output = []
 
-
+        # 我们需要得到每个数据的第一个维度是什么？
+        self.name2shape: dict[str, bool] = {}
 
     def add_node(self, node: NodeInfo, name: str):
         self.node_list[name] = node
-        
+        try:
+            node.Can_batch = node.can_batch(self.name2shape)
+        except:
+            pass
     
     def add_parameters(self, info: ParameterInfo, name: str):
         if info.hash not in self.paramter_list:

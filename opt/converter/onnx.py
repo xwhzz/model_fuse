@@ -100,6 +100,13 @@ class ONNXConverter(Converter):
             param, name = self.get_parameter(init, model)
             g.add_parameters(param, name)
 
+        for vi in model.value_info:
+            g.name2shape[vi.name] = vi.type.tensor_type.shape.dim[0].dim_param == "batch_size"
+        for inp in model.input:
+            g.name2shape[inp.name] = inp.type.tensor_type.shape.dim[0].dim_param == "batch_size"
+        for out in model.output:
+            g.name2shape[out.name] = out.type.tensor_type.shape.dim[0].dim_param == "batch_size"
+            
         for node in model.node:
             nod, name = self.get_node(node, g)
             g.add_node(nod, name)

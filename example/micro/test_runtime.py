@@ -8,7 +8,7 @@ def run_fuse(model_num: int, index: list[int], data):
 
     so.register_custom_ops_library('../libcustom_op_library.so')
 
-    onnx_model = onnx.load(f'./model_/fuse_{model_num}.onnx')
+    onnx_model = onnx.load(f'./model/fuse_{model_num}.onnx')
 
     sess = ort.InferenceSession(onnx_model.SerializeToString(), so, providers=['CPUExecutionProvider'])
 
@@ -34,7 +34,7 @@ def run_model(path: str, start: int, end: int, data):
 def test_res(model_num: int, index: list[int], data):
     model_path = []
     for i in range(1,model_num+1):
-        model_path.append(f'./model_/model_{i}.onnx')
+        model_path.append(f'./model/model_{i}.onnx')
     res = []
     for idx, p in enumerate(model_path):
         res.append(run_model(p, index[idx], index[idx+1], data))

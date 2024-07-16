@@ -15,15 +15,13 @@ def convert_constant_to_initializer(model: onnx.ModelProto):
     return model
 
 def main(args):
-    model = onnx.load(args.model)
+    model = onnx.load(args.input)
     updated_model = convert_constant_to_initializer(model)
     onnx.save(updated_model, args.output)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model", type=str, help="Path to the ONNX model")
+    parser.add_argument("--input", type=str, help="Path to the ONNX model")
     parser.add_argument('--output', type=str, help="Output path")
     args = parser.parse_args()
     main(args)
-
-    netron.start(args.output)

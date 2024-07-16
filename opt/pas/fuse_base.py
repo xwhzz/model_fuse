@@ -2,12 +2,9 @@ from opt.graph import *
 
 def fuse_base(g_1: Graph, g_2: Graph) -> Graph:
     fuse_graph = g_1
-    """
-    可以fuse constant的节点
-    """
     for node_name, node_info in g_2.node_list.items():
         has_same = False
-        if node_info.has_weight():
+        if node_info.has_weight() and node_info.can_batch(g_2.name2shape):
             same_ps = set()
             has_same = True
             for idx, para in enumerate(node_info.Parameters):
@@ -16,7 +13,10 @@ def fuse_base(g_1: Graph, g_2: Graph) -> Graph:
                 try:
                     for fuse_para in fuse_graph.paramter_list[para_info.hash].values():
                         if para_info.value.shape == fuse_para.value.shape and np.allclose(para_info.value, fuse_para.value):
-                            same.add(fuse_para.node)
+                            name = fuse_para.node
+                            cur_node = fuse_graph.node_list[name]
+                            if cur_node.can_batch(fuse_graph.name2shape):
+                                same.add(fuse_para.node)
                 except:
                     has_same = False
                     break

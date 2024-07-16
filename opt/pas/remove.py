@@ -45,7 +45,7 @@ def remove_op(graph: Graph):
                         if len(input2node[inp]) == 1: #
                             before_merge = graph.node_list[output2node[inp][0]]
                             ## 这是因为带参数的我们已经考虑过了
-                            if before_merge.can_batch() and (not before_merge.has_weight()):
+                            if before_merge.Can_batch and (not before_merge.has_weight()):
                                 good_node += 1
                                 other_list.append(before_merge.Other)
                             op_type.append(before_merge.Type)
@@ -147,7 +147,7 @@ def remove_op(graph: Graph):
                     try:
                         if len(input2node[out]) == 1:
                             after_route = graph.node_list[input2node[out][0]]
-                            if after_route.Type != "Merge" and after_route.can_batch() and (not after_route.has_weight()):
+                            if after_route.Type != "Merge" and after_route.Can_batch and (not after_route.has_weight()):
                                 op_type.append(after_route.Type)
                                 other_list.append(after_route.Other)
                     except:
