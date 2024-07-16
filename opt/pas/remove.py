@@ -45,7 +45,7 @@ def remove_op(graph: Graph):
                         if len(input2node[inp]) == 1: #
                             before_merge = graph.node_list[output2node[inp][0]]
                             ## 这是因为带参数的我们已经考虑过了
-                            if before_merge.Can_batch and (not before_merge.has_weight()):
+                            if before_merge.Can_batch and (not before_merge.has_weight(False)):
                                 good_node += 1
                                 other_list.append(before_merge.Other)
                             op_type.append(before_merge.Type)
@@ -138,7 +138,7 @@ def remove_op(graph: Graph):
                             output2node[new_name] = [node_name]
                             cur_index = output2node[output_].index(node_name)
                             output2node[output_][cur_index] = new_node_name
-                            new_node = NodeInfo(op_typ, [new_name] , [output_], [], other)
+                            new_node = NodeInfo(op_typ, [new_name] , [output_], [], other, InputIndex=[0])
                             graph.add_node(new_node, new_node_name)
             elif node_info.Type == "Route":
                 op_type = []
@@ -147,7 +147,7 @@ def remove_op(graph: Graph):
                     try:
                         if len(input2node[out]) == 1:
                             after_route = graph.node_list[input2node[out][0]]
-                            if after_route.Type != "Merge" and after_route.Can_batch and (not after_route.has_weight()):
+                            if after_route.Type != "Merge" and after_route.Can_batch and (not after_route.has_weight(False)):
                                 op_type.append(after_route.Type)
                                 other_list.append(after_route.Other)
                     except:
@@ -193,7 +193,7 @@ def remove_op(graph: Graph):
                         cur_index = input2node[input_].index(node_name)
                         input2node[input_][cur_index] = new_node_name
 
-                        new_node = NodeInfo(op_typ, [input_] , [new_name], [], other)
+                        new_node = NodeInfo(op_typ, [input_] , [new_name], [], other, InputIndex=[0])
                         graph.add_node(new_node, new_node_name)
 
     remove_identity(graph)

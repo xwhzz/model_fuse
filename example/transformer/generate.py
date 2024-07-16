@@ -36,8 +36,8 @@ class Net(nn.Module):
 
 decoder_layer_2 = peft_model.base_model.model.model.layers
 
-model_1 = Net(decoder_layer_1[:2])
-model_2 = Net(decoder_layer_2[:2])
+model_1 = Net(decoder_layer_1[:1])
+model_2 = Net(decoder_layer_2[:1])
 
 input_tensor = torch.rand((1,10,4096),dtype=torch.float32)
 

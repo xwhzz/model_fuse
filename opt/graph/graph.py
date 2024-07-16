@@ -19,10 +19,15 @@ class NodeInfo:
     Other: Any
 
     Can_batch: bool | None = None
+
+    InputIndex: list[int] | None = None
     # num: int = 1
 
-    def has_weight(self) -> bool:
-        return len(self.Parameters) > 0
+    def has_weight(self, flag: bool = True) -> bool:
+        if flag:
+            return self.Type == "MatMul" and len(self.Parameters) > 0
+        else:
+            return len(self.Parameters) > 0
     
     def can_batch(self, name2shape) -> bool:
         return len(self.Input) == 1 and len(self.Output) == 1 and name2shape[self.Input[0]] and name2shape[self.Output[0]]
@@ -55,7 +60,6 @@ class Graph:
         self.input = []
         self.output = []
 
-        # 我们需要得到每个数据的第一个维度是什么？
         self.name2shape: dict[str, bool] = {}
 
     def add_node(self, node: NodeInfo, name: str):

@@ -37,13 +37,16 @@ class ONNXConverter(Converter):
 
         parameters = []
         new_input = []
-        for inp in node_input:
+        input_index = []
+        para_index = []
+        for idx, inp in enumerate(node_input):
             if graph.name2para.get(inp, None) is None:
                 new_input.append(inp)
+                input_index.append(idx)
             else:
                 parameters.append(inp)
-
-        return NodeInfo(node_type, new_input, node_output, parameters, node_other), node_name
+                para_index.append(idx)
+        return NodeInfo(node_type, new_input, node_output, parameters, node_other,InputIndex=input_index + para_index), node_name
 
     def get_parameter(self, init: onnx.TensorProto, graph: onnx.GraphProto) -> ParameterInfo:
         tensor_name = init.name
@@ -75,7 +78,19 @@ class ONNXConverter(Converter):
         return tensor
 
     def info2node(self, node: NodeInfo, name: str) -> onnx.NodeProto:
-        node_input = node.Input + node.Parameters
+        if not (node.Type == "Merge" or node.Type == "Route"):
+            assert len(node.Input) + len(node.Parameters) == len(node.InputIndex)
+            index_list = node.InputIndex
+            node_input = [''] * len(node.InputIndex)
+            index = 0
+            for inp in node.Input:
+                node_input[index_list[index]] = inp
+                index += 1
+            for para in node.Parameters:
+                node_input[index_list[index]] = para
+                index += 1
+        else:
+            node_input = node.Input
         domain = None
         ## 自定义算子
         if node.Type == "Merge" or node.Type == "Route":
@@ -101,12 +116,15 @@ class ONNXConverter(Converter):
             g.add_parameters(param, name)
 
         for vi in model.value_info:
-            g.name2shape[vi.name] = vi.type.tensor_type.shape.dim[0].dim_param == "batch_size"
+            try:
+                g.name2shape[vi.name] = vi.type.tensor_type.shape.dim[0].dim_param == "batch_size"
+            except:
+                g.name2shape[vi.name] = False
         for inp in model.input:
             g.name2shape[inp.name] = inp.type.tensor_type.shape.dim[0].dim_param == "batch_size"
         for out in model.output:
             g.name2shape[out.name] = out.type.tensor_type.shape.dim[0].dim_param == "batch_size"
-            
+
         for node in model.node:
             nod, name = self.get_node(node, g)
             g.add_node(nod, name)
