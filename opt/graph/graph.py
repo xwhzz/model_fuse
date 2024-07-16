@@ -25,7 +25,13 @@ class NodeInfo:
 
     def has_weight(self, flag: bool = True) -> bool:
         if flag:
-            return (self.Type == "MatMul" or self.Type == "Gemm") and len(self.Parameters) > 0
+            has_weight = False
+            for para in self.Parameters:
+                if "weight" in para or "bias" in para:
+                    has_weight = True
+                    break
+            return has_weight or (self.Type == "MatMul" and len(self.Parameters) > 0 )
+            # return (self.Type == "MatMul" or self.Type == "Gemm") and len(self.Parameters) > 0
         else:
             return len(self.Parameters) > 0
     

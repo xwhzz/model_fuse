@@ -62,4 +62,6 @@ python test_runtime.py
 
 We provide a script `./tools/constant_to_initializer.py` that converts `Constant` nodes into initializers. You can use this script to create a graph without `Constant` nodes, which is necessary for our fusion algorithm.
 
-
+# TODO
+- [ ] Generalize input assumptions to handle multiple inputs
+- [ ] Refactor the single Route Op into multiple specialized Route Ops.
