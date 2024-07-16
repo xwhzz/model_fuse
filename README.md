@@ -39,9 +39,9 @@ In the `./example/micro` directory, you can find some files. Follow these instru
 ```bash
 cd example/micro
 python generate.py
+./convert.sh
 
-python fuse.py --num 2  # num: the number of fused models
-python fuse.py --num 5
+python fuse.py 
 python test_runtime.py
 ```
 
