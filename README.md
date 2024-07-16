@@ -50,7 +50,10 @@ python test_runtime.py
 In the `./example/transformer` directory, follow these instructions to test the functionality. We use two decode layers of the LLaMA model and its LoRA variant as our test models:
 
 ```bash
+cd example/transformer
 python generate.py
+./convert.sh
+
 python fuse.py
 python test_runtime.py
 ```
