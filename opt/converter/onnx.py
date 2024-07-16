@@ -48,12 +48,15 @@ class ONNXConverter(Converter):
                 para_index.append(idx)
         return NodeInfo(node_type, new_input, node_output, parameters, node_other,InputIndex=input_index + para_index), node_name
 
-    def get_parameter(self, init: onnx.TensorProto, graph: onnx.GraphProto) -> ParameterInfo:
+    def get_parameter(self, init: onnx.TensorProto, graph: onnx.GraphProto, remove_node: set[str] | None=None) -> tuple[ParameterInfo, str]:
         tensor_name = init.name
 
         value = onnx.numpy_helper.to_array(init)
         op_name = ""
         for node in graph.node:
+            if remove_node is not None:
+                if node.name in remove_node:
+                    continue
             for node_input in node.input:
                 if tensor_name in node_input:
                     op_name = node.name
@@ -125,9 +128,19 @@ class ONNXConverter(Converter):
         for out in model.output:
             g.name2shape[out.name] = out.type.tensor_type.shape.dim[0].dim_param == "batch_size"
 
+        remove_node = set()
         for node in model.node:
-            nod, name = self.get_node(node, g)
-            g.add_node(nod, name)
+            if node.op_type == 'Constant':
+                constant_tensor = onnx.numpy_helper.to_array(node.attribute[0].t)
+                tensor_name = node.output[0]
+                new_initializer = onnx.numpy_helper.from_array(constant_tensor, name=tensor_name)
+                remove_node.add(tensor_name)
+                g.add_parameters(*(self.get_parameter(new_initializer, model, remove_node)))
+                g.add_constant(tensor_name)
+            else:
+                nod, name = self.get_node(node, g)
+                g.add_node(nod, name)
+
         return g
 
     def from_graph(self, graph: Graph, num: int=2) -> onnx.GraphProto:

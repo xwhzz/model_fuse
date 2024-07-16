@@ -23,14 +23,14 @@ class NodeInfo:
     InputIndex: list[int] | None = None
     # num: int = 1
 
-    def has_weight(self, flag: bool = True) -> bool:
-        if flag:
+    def has_weight(self, flag: bool = True, graph = None) -> bool:
+        if flag and graph is not None:
             has_weight = False
             for para in self.Parameters:
-                if "weight" in para or "bias" in para:
+                if para not in graph.constants:
                     has_weight = True
                     break
-            return has_weight or (self.Type == "MatMul" and len(self.Parameters) > 0 )
+            return has_weight # or (self.Type == "MatMul" and len(self.Parameters) > 0 )
             # return (self.Type == "MatMul" or self.Type == "Gemm") and len(self.Parameters) > 0
         else:
             return len(self.Parameters) > 0
@@ -68,6 +68,8 @@ class Graph:
 
         self.name2shape: dict[str, bool] = {}
 
+        self.constants: set[str] = set()
+
     def add_node(self, node: NodeInfo, name: str):
         self.node_list[name] = node
         try:
@@ -98,6 +100,8 @@ class Graph:
             return True
         return False
 
+    def add_constant(self, name: str):
+        self.constants.add(name)
         # if node1.has_weight() and node2.has_weight():
         # #     return self.name2para[node1.Parameters[0]] == self.name2para[node2.Parameters[0]]
         # # else:

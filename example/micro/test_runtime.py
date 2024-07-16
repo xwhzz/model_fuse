@@ -52,5 +52,5 @@ if __name__ == '__main__':
         test_res(2, [0, i, 5], data)
 
     # # 5 models test
-    # data = np.random.random((10,784)).astype(np.float32)
-    # test_res(5, [0,3,5,7,8,10], data)
+    data = np.random.random((10,784)).astype(np.float32)
+    test_res(5, [0,3,5,7,8,10], data)

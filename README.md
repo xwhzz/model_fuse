@@ -41,7 +41,8 @@ cd example/micro
 python generate.py
 ./convert.sh
 
-python fuse.py 
+python fuse.py --num 2
+python fuse.py
 python test_runtime.py
 ```
 
@@ -58,9 +59,9 @@ python fuse.py
 python test_runtime.py
 ```
 
-# Additional Tools
+<!-- # Additional Tools
 
-We provide a script `./tools/constant_to_initializer.py` that converts `Constant` nodes into initializers. You can use this script to create a graph without `Constant` nodes, which is necessary for our fusion algorithm.
+We provide a script `./tools/constant_to_initializer.py` that converts `Constant` nodes into initializers. You can use this script to create a graph without `Constant` nodes, which is necessary for our fusion algorithm. -->
 
 # TODO
 - [ ] Generalize input assumptions to handle multiple inputs
