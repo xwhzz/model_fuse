@@ -25,7 +25,7 @@ class NodeInfo:
 
     def has_weight(self, flag: bool = True) -> bool:
         if flag:
-            return self.Type == "MatMul" and len(self.Parameters) > 0
+            return (self.Type == "MatMul" or self.Type == "Gemm") and len(self.Parameters) > 0
         else:
             return len(self.Parameters) > 0
     
@@ -76,3 +76,23 @@ class Graph:
 
         self.name2para[name] = info.hash
 
+    def weight_is_equal(self, node1: NodeInfo, node2: NodeInfo) -> bool:
+        if len(node1.Parameters) == len(node2.Parameters):
+            for i in range(len(node1.Parameters)):
+                hash1 = self.name2para[node1.Parameters[i]]
+                hash2 = self.name2para[node2.Parameters[i]]
+                if hash1 != hash2:
+                    return False
+                else:
+                    if self.paramter_list[hash1][node1.Parameters[i]].value.shape == self.paramter_list[hash2][node2.Parameters[i]].value.shape and \
+                        np.allclose(self.paramter_list[hash1][node1.Parameters[i]].value, self.paramter_list[hash2][node2.Parameters[i]].value):
+                        continue
+                    else:
+                        return False
+            return True
+        return False
+
+        # if node1.has_weight() and node2.has_weight():
+        # #     return self.name2para[node1.Parameters[0]] == self.name2para[node2.Parameters[0]]
+        # # else:
+        # #     return False

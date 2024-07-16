@@ -145,12 +145,32 @@ class ONNXConverter(Converter):
         
         for name, node in graph.node_list.items():
             g.node.extend([self.info2node(node, name)])
-
+            
+        self.clean_unused_initializers(g)
         return g
-    
+
+
+    def clean_unused_initializers(self, graph: onnx.GraphProto):
+        print('Clean unused initializer Start!')
+        all_initializers = set(initializer.name for initializer in graph.initializer)
+        input_names = set(input.name for input in graph.input)
+
+        used_initializers = set()
+        for node in graph.node:
+            used_initializers.update(node.input)
+
+        unused_initializers = all_initializers - (used_initializers | input_names)
+
+        for initializer_name in unused_initializers:
+            graph.initializer.remove(next(initializer for initializer in graph.initializer if initializer.name == initializer_name))
+        
+        print('Clean unused initializers Complete!')
+
     @staticmethod
     def export_file(graph: onnx.GraphProto, file_name: str='fused_model.onnx'):
         model = onnx.helper.make_model(graph)
         model.opset_import[0].version = 14
         onnx.save(model, file_name)
+
+
 

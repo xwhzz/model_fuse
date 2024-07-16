@@ -42,10 +42,11 @@ def remove_op(graph: Graph):
                 good_node = 0
                 for inp in node_info.Input:
                     try:
-                        if len(input2node[inp]) == 1: #
+                        if len(input2node[inp]) == 1:
                             before_merge = graph.node_list[output2node[inp][0]]
-                            ## 这是因为带参数的我们已经考虑过了
-                            if before_merge.Can_batch and (not before_merge.has_weight(False)):
+
+                            ## TODO: 考虑有weight的算子
+                            if before_merge.Can_batch: #and (not before_merge.has_weight(False)):
                                 good_node += 1
                                 other_list.append(before_merge.Other)
                             op_type.append(before_merge.Type)
@@ -61,7 +62,7 @@ def remove_op(graph: Graph):
                             route_name = []
                             for inp in node_info.Input:
                                 if len(input2node[inp]) == 1:
-                                    print(f"input {inp}: ",input2node[inp])
+                                    # print(f"input {inp}: ",input2node[inp])
                                     route_name.append(output2node[inp][0])
                             try:
                                 route_name_ = route_name[0]
@@ -103,7 +104,17 @@ def remove_op(graph: Graph):
                                 remove_node.add(node_name)
 
                         elif good_node == len(node_info.Input) and all((other == oth for oth in other_list[1:])):
-
+                            node_1 = graph.node_list[output2node[node_info.Input[0]][0]]
+                            has_weight = node_1.has_weight(False)
+                            if has_weight:
+                                same_weight = True
+                                for node_inp in node_info.Input[1:]:
+                                    node_2 = graph.node_list[output2node[node_inp][0]]
+                                    if not graph.weight_is_equal(node_1, node_2):
+                                        same_weight = False
+                                        break
+                                if not same_weight:
+                                    continue
                             has_change = True
                             node_info_input = []
                             new_node_name = None
@@ -138,7 +149,10 @@ def remove_op(graph: Graph):
                             output2node[new_name] = [node_name]
                             cur_index = output2node[output_].index(node_name)
                             output2node[output_][cur_index] = new_node_name
-                            new_node = NodeInfo(op_typ, [new_name] , [output_], [], other, InputIndex=[0])
+                            if has_weight:
+                                new_node = NodeInfo(op_typ, [new_name] , [output_], node_1.Parameters, other, InputIndex=node_1.InputIndex)
+                            else:
+                                new_node = NodeInfo(op_typ, [new_name] , [output_], [], other, InputIndex=[0])
                             graph.add_node(new_node, new_node_name)
             elif node_info.Type == "Route":
                 op_type = []
@@ -147,7 +161,7 @@ def remove_op(graph: Graph):
                     try:
                         if len(input2node[out]) == 1:
                             after_route = graph.node_list[input2node[out][0]]
-                            if after_route.Type != "Merge" and after_route.Can_batch and (not after_route.has_weight(False)):
+                            if after_route.Type != "Merge" and after_route.Can_batch: #and (not after_route.has_weight(False)):
                                 op_type.append(after_route.Type)
                                 other_list.append(after_route.Other)
                     except:
@@ -157,6 +171,17 @@ def remove_op(graph: Graph):
                     op_typ = op_type[0]
                     other = other_list[0]
                     if all((type == op_typ for type in op_type[1:])) and all((other == oth for oth in other_list[1:])):
+                        node_1 = graph.node_list[input2node[node_info.Output[0]][0]]
+                        has_weight = node_1.has_weight(False)
+                        if has_weight:
+                            same_weight = True
+                            for node_inp in node_info.Output[1:]:
+                                node_2 = graph.node_list[input2node[node_inp][0]]
+                                if not graph.weight_is_equal(node_1, node_2):
+                                    same_weight = False
+                                    break
+                            if not same_weight:
+                                continue
                         has_change = True
                         node_info_output = []
                         new_node_name = None
@@ -192,8 +217,13 @@ def remove_op(graph: Graph):
 
                         cur_index = input2node[input_].index(node_name)
                         input2node[input_][cur_index] = new_node_name
-
-                        new_node = NodeInfo(op_typ, [input_] , [new_name], [], other, InputIndex=[0])
+                        para_list = node_1.Parameters
+                        index_list = node_1.InputIndex
+                        # if has_weight:
+                        if has_weight:
+                            new_node = NodeInfo(op_typ, [input_] , [new_name], para_list, other, InputIndex=index_list)
+                        else:
+                            new_node = NodeInfo(op_typ, [input_] , [new_name], [], other, InputIndex=[0])
                         graph.add_node(new_node, new_node_name)
 
     remove_identity(graph)
