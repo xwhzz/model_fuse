@@ -1,2 +1,5 @@
 torch
 onnx
+# onnx_graphsurgeon
+transformers
+peft

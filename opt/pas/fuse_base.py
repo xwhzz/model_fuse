@@ -1,6 +1,9 @@
 from opt.graph import *
 
 def fuse_base(g_1: Graph, g_2: Graph) -> Graph:
+    assert len(g_1.input) == len(g_2.input) and \
+        len(g_1.output) == len(g_2.output), \
+        "The number of inputs and outputs of the two graphs must be the same"
     fuse_graph = g_1
     for node_name, node_info in g_2.node_list.items():
         has_same = False
@@ -44,7 +47,11 @@ def fuse_base(g_1: Graph, g_2: Graph) -> Graph:
                 fuse_graph.paramter_list[para_info.hash][para] = para_info
                 fuse_graph.name2para[para] = para_info.hash
     
-    fuse_graph.input.extend(g_2.input)
-    fuse_graph.output.extend(g_2.output)
-    
+    for idx, inp in enumerate(g_2.input):
+        if isinstance(fuse_graph.input[idx], str):
+            fuse_graph.input[idx] = [fuse_graph.input[idx]]
+        fuse_graph.input[idx].append(inp)
+    for idx, out in enumerate(g_2.output):
+        if isinstance(fuse_graph.output[idx], str):
+            fuse_graph.output[idx] = [fuse_graph.output[idx]]
     return fuse_graph

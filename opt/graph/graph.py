@@ -48,7 +48,8 @@ class ParameterInfo:
 
     @staticmethod
     def get_hash(value: np.ndarray):
-        return int(np.sum(value)) % (2 ** 30)
+        # Use more robust hash function
+        return hash(value.tobytes()) 
 
     @classmethod
     def get_info(cls, value: np.ndarray, node: str):
@@ -62,9 +63,10 @@ class Graph:
         self.paramter_list: dict[int, dict[str, ParameterInfo]] = { }
 
         self.name2para: dict[str, int] = {}
-
-        self.input = []
-        self.output = []
+        # extend to support multiple inputs and outputs
+        # FIXME: support inputs with no batch size
+        self.input: list[list[str] | str] = []
+        self.output: list[list[str] | str] = []
 
         self.name2shape: dict[str, bool] = {}
 

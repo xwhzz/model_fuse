@@ -1,8 +1,9 @@
 from opt.graph import *
 from copy import deepcopy
 
-
-def add_op(graph: Graph):
+# at least make the inputs and outputs of graph 1 and graph 2 the same,
+# specify the index of the input and output with no batch size
+def add_op(graph: Graph, no_batch_input: list[int] | None = None, no_batch_output: list[int] | None = None):
     node_list = deepcopy(graph.node_list)
 
     for node_name, node_info in node_list.items():
@@ -16,13 +17,31 @@ def add_op(graph: Graph):
             graph.add_node(merge_op, node_name + '_merge')
             graph.add_node(route_op, node_name + '_route')
     
-    if len(graph.input) > 1:
-        route_op = NodeInfo('Route', ['Input', 'Info_1'],graph.input, [], None)
-        merge_op = NodeInfo('Merge', graph.output, ['Output', 'Info_add'], [], None)
+    input_list = []
+    output_list = []
 
-        graph.add_node(route_op, 'route')
-        graph.add_node(merge_op, 'merge')
+    # process the input
+    for idx, inp in enumerate(graph.input):
+        if len(inp) == 1 or (no_batch_input is not None and idx in no_batch_input):
+            input_list.extend(inp)
+            continue
+        route_name = f'input_{idx}'
+        route_op = NodeInfo('Route', [route_name, 'info'], inp, [], None)
+        graph.add_node(route_op, f'route_{idx}')
+        input_list.append(route_name)
+    input_list.append('info')
+    graph.input = input_list
 
-        graph.input = ['Input', "Info_1"]
-        graph.output = ['Output']
+    # process the output
+    for idx, out in enumerate(graph.output):
+        if len(out) == 1 or (no_batch_output is not None and idx in no_batch_output):
+            output_list.extend(out)
+            continue
+        merge_op = NodeInfo('Merge', out, [f'output_{idx}', 'info_'], [], None)
+        graph.add_node(merge_op, f'merge_{idx}')
+        output_list.append(f'output_{idx}')
+
+    graph.output = output_list
+
+    return graph
 
