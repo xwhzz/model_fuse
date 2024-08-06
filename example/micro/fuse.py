@@ -3,7 +3,7 @@ import argparse
 import netron
 
 from opt.converter import ONNXConverter
-from opt.pas import fuse_base, add_op, remove_op
+from opt.pas import fuse_base, add_op, remove_op, combine
 
 
 def get_graph(path: str, index: int):
@@ -21,7 +21,7 @@ if __name__ == '__main__':
     sep_num = 0
     g_1 = get_graph('./model/model_1.onnx', 0)
     sep_num += len(g_1.node)
-    converter = ONNXConverter(g_1.input[0].type, g_1.output[0].type, model_num)
+    converter = ONNXConverter([g_1.input[0].type], [g_1.output[0].type], model_num)
     g_1 = converter.to_graph(g_1)
     for i in range(1,model_num):
         g = get_graph(f'./model/model_{i+1}.onnx', i)
@@ -30,7 +30,8 @@ if __name__ == '__main__':
         g_1 = fuse_base(g_1, g)
     
     add_op(g_1)
-    remove_op(g_1)
+    # remove_op(g_1)
+    combine(g_1)
     fuse_graph = converter.from_graph(g_1)
 
     fuse_op_num = len(fuse_graph.node)

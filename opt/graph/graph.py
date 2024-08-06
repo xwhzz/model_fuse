@@ -35,11 +35,16 @@ class NodeInfo:
         else:
             return len(self.Parameters) > 0
     
-    def can_batch(self, name2shape) -> bool:
-        return len(self.Input) == 1 and len(self.Output) == 1 and name2shape[self.Input[0]] and name2shape[self.Output[0]]
+    def can_batch(self, name2shape, input_default: int=1) -> bool:
+        ## 可以扩展到多个输入的情况
+        input_flag = True
+        for inp in self.Input[:input_default]:
+            if not name2shape[inp]:
+                input_flag = False
+                break
+
+        return len(self.Output) == 1 and name2shape[self.Output[0]] and input_flag and len(self.Input) == input_default
     
-
-
 @dataclass
 class ParameterInfo:
     hash: int
@@ -86,8 +91,23 @@ class Graph:
 
         self.name2para[name] = info.hash
 
-    def weight_is_equal(self, node1: NodeInfo, node2: NodeInfo) -> bool:
-        if len(node1.Parameters) == len(node2.Parameters):
+    def weight_is_equal(self, node1: NodeInfo, node2: NodeInfo, node1_index: int=0, node2_index: int=0) -> bool:
+        if node1.Type == node2.Type and len(node1.Parameters) == len(node2.Parameters) and node1_index == node2_index:
+            try:
+                for inp in node1.Input:
+                    if not self.name2shape[inp]:
+                        return False
+                for out in node1.Output:
+                    if not self.name2shape[out]:
+                        return False
+                for inp in node2.Input:
+                    if not self.name2shape[inp]:
+                        return False
+                for out in node2.Output:
+                    if not self.name2shape[out]:
+                        return False
+            except:
+                pass
             for i in range(len(node1.Parameters)):
                 hash1 = self.name2para[node1.Parameters[i]]
                 hash2 = self.name2para[node2.Parameters[i]]
@@ -99,6 +119,8 @@ class Graph:
                         continue
                     else:
                         return False
+            if node1.Other != node2.Other:
+                return False
             return True
         return False
 

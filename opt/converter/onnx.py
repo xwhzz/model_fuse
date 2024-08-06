@@ -64,14 +64,14 @@ class ONNXConverter(Converter):
         assert op_name
         return ParameterInfo.get_info(value, op_name), tensor_name
 
-    def str2value(self, name: str, inp: bool) -> onnx.ValueInfoProto:
+    def str2value(self, name: str, inp: bool, index: int) -> onnx.ValueInfoProto:
         if "info" in name.lower():
             value = onnx.helper.make_tensor_value_info(name,
-                        onnx.onnx_pb.TensorProto.INT32, [self.num + 1])
+                        onnx.onnx_pb.TensorProto.INT64, [self.num ])
         else:
             value = onnx.ValueInfoProto()
             value.name = name
-            value.type.CopyFrom(self.input_type if inp else self.output_type)
+            value.type.CopyFrom(self.input_type[index] if inp else self.output_type[index])
 
         return value
 
@@ -96,11 +96,12 @@ class ONNXConverter(Converter):
             node_input = node.Input
         domain = None
         ## 自定义算子
-        if node.Type == "Merge" or node.Type == "Route":
-            # domain = "ai.onnx.contrib"
+        if node.Type == "Route":
+            node.Type = "Split"
+        elif node.Type == "Merge":
+            # node.Type = "Concat"
             domain = "test.customop"
-            # new_node = onnx.helper.make_node(node.Type, node_input, node.Output, name, domain=domain, num=node.num)
-        # else:
+            # node.Other = [onnx.helper.make_attribute("is_merge", 1), onnx.helper.make_attribute("axis", 0)]
         new_node = onnx.helper.make_node(node.Type, node_input, node.Output, name, domain=domain)
         if node.Other:
             new_node.attribute.extend(node.Other)
@@ -120,6 +121,7 @@ class ONNXConverter(Converter):
 
         for vi in model.value_info:
             try:
+                # print(vi.name)
                 g.name2shape[vi.name] = vi.type.tensor_type.shape.dim[0].dim_param == "batch_size"
             except:
                 g.name2shape[vi.name] = False
@@ -147,8 +149,8 @@ class ONNXConverter(Converter):
         g = onnx.GraphProto()
         g.name = 'Fused model'
 
-        g.input.extend([self.str2value(inp, True) for inp in graph.input])
-        g.output.extend([self.str2value(out, False) for out in graph.output])
+        g.input.extend([self.str2value(inp, True, idx) for idx, inp in enumerate(graph.input)])
+        g.output.extend([self.str2value(out, False, idx) for idx, out in enumerate(graph.output)])
 
         for para in graph.paramter_list.values():
             for name, p in para.items():
@@ -160,6 +162,7 @@ class ONNXConverter(Converter):
             g.node.extend([self.info2node(node, name)])
             
         self.clean_unused_initializers(g)
+        self.clean_unused_node(g)
         return g
 
 
@@ -179,8 +182,29 @@ class ONNXConverter(Converter):
         
         print('Clean unused initializers Complete!')
 
+    def clean_unused_node(self, graph: onnx.GraphProto):
+        print('Clean unused node Start!')
+        has_change = True
+        while has_change:
+            has_change = False
+            all_input = set()
+            for node in graph.node:
+                all_input.update(node.input)
+
+            all_input = all_input | set(output.name for output in graph.output)
+            node_list = []
+            for node in graph.node:
+                if all_input.isdisjoint(node.output):
+                    has_change = True
+                    node_list.append(node)
+            for node in node_list:
+                graph.node.remove(node)
+        print('Clean unused node Complete!')
+
     @staticmethod
     def export_file(graph: onnx.GraphProto, file_name: str='fused_model.onnx'):
+        for node in graph.node:
+            print(node.name)
         model = onnx.helper.make_model(graph)
         model.opset_import[0].version = 14
         onnx.save(model, file_name)

@@ -1,4 +1,6 @@
 from opt.graph import *
+from collections import defaultdict
+from collections import deque
 
 def get_map(graph: Graph):
     input2node = {}
@@ -21,7 +23,111 @@ def get_map(graph: Graph):
             output2node[out].append(node_name)
 
     return input2node, output2node, custom_list
+
+def find_equivalent_sets(node_dict, g: Graph):
+
+    node_to_set = {}
+
+    equivalent_sets = defaultdict(list)
+
+    set_keys = defaultdict(set)
     
+    set_index = 0
+    equal = g.weight_is_equal
+    for key, node_list in node_dict.items():
+        for node in node_list:
+            # assert node != '0', "Node name cannot be 0"
+            if (node, key) not in node_to_set:
+                found_equivalent = False
+                for (existing_node, existing_key), existing_set in node_to_set.items():
+                    # print(existing_node, existing_key)
+                    ekey_index = g.node_list[existing_node].Input.index(existing_key)
+                    key_index = g.node_list[node].Input.index(key)
+                    # print(node, existing_node)
+                    if equal(g.node_list[node], g.node_list[existing_node], key_index, ekey_index) and key not in set_keys[existing_set]:
+
+                        # equivalent_sets[existing_set].append((node, key))
+                        equivalent_sets[existing_set].append(node)
+                        node_to_set[(node, key)] = existing_set
+                        set_keys[existing_set].add(key)
+                        found_equivalent = True
+                        break
+                
+                if not found_equivalent:
+                    node_to_set[(node, key)] = set_index
+                    # equivalent_sets[set_index].append((node, key))
+                    equivalent_sets[set_index].append(node)
+                    set_keys[set_index].add(key)
+                    set_index += 1
+
+    return list(equivalent_sets.values())
+
+def linear_heritance(queue_list: list[deque], element: tuple[str,str]):
+    for queue in queue_list:
+        if element[1] == queue[0]:
+            queue.appendleft(element[0])
+            break
+        elif element[0] == queue[-1]:
+            queue.append(element[1])
+            break
+    else:
+        queue_list.append(deque(element))
+
+
+def eliminate_op(graph: Graph):
+    def get_route(ls: list[str]) -> list[str]:
+        lset = set(ls)
+        return [item for item in lset if item]
+    input2node, output2node, custom_list = get_map(graph)
+    """
+    消解规则：考虑Route-Merge模式
+        1. 我们认为如果Route节点的输出 包含于 Merge节点的输入，那么此时我们可以将该route删除；
+        2. 如果Merge节点只有一个输入，那么消去该节点。
+
+    此时，route的输出实际上可以作为多个节点的输入，这里使用我们的规则可以处理。
+    We only consider from the view of Merge node.
+    """
+    queue_list = []
+    for node_name, node_info in custom_list.items():
+        if node_info.Type == "Merge":
+            route_name = [''] * len(node_info.Input)
+            for idx, inp in enumerate(node_info.Input):
+                cur_node = output2node[inp][0]
+                if graph.node_list[cur_node].Type == "Route":
+                    route_name[idx] = cur_node
+            route_name = get_route(route_name)
+            for name in route_name:
+                route_node = graph.node_list[name]
+                route_output = set(route_node.Output)
+                merge_input = set(node_info.Input)
+                merge_input_ls = list(merge_input)
+                if route_output.issubset(merge_input):
+                    for idx, out in enumerate(route_node.Output):
+                        merge_input_ls.remove(out) 
+                    route_inp = route_node.Input[0]
+                    # route_info = route_node.Input[1]
+                    merge_input_ls.append(route_inp)
+
+                    if len(merge_input_ls) == 1:
+                        # Process route information.
+                        # 可能不存在下一个Route节点，这里的例子是最后的输出总需要一个Merge
+                        if node_info.Output[1] in input2node:
+                            for nnode in input2node[node_info.Output[1]]:
+                                if graph.node_list[nnode].Type == "Route":
+                                    # next_route = graph.node_list[nnode]
+                                    # 注意这里我们最后再加info，因为此处具有链式继承关系
+                                    # next_route.Input[1] = route_info
+                                    linear_heritance(queue_list, (name, nnode))
+
+                        new_node = NodeInfo("Identity", [route_inp] , [node_info.Output[0]], [], None)
+                        graph.add_node(new_node, node_name + '_id')
+
+                    node_info.Input = merge_input_ls
+
+    for queue in queue_list:
+        # ori_route_info = graph.node_list[queue[0]].Input[1]
+        graph.node_list[queue[-1]].Input[1] = graph.node_list[queue[0]].Input[1]
+
 
 def remove_op(graph: Graph):
     has_change = False
@@ -44,7 +150,6 @@ def remove_op(graph: Graph):
                     try:
                         if len(input2node[inp]) == 1:
                             before_merge = graph.node_list[output2node[inp][0]]
-
                             ## TODO: 考虑有weight的算子
                             if before_merge.Can_batch: #and (not before_merge.has_weight(False)):
                                 good_node += 1
@@ -105,16 +210,15 @@ def remove_op(graph: Graph):
 
                         elif good_node == len(node_info.Input) and all((other == oth for oth in other_list[1:])):
                             node_1 = graph.node_list[output2node[node_info.Input[0]][0]]
-                            has_weight = node_1.has_weight(False)
-                            if has_weight:
-                                same_weight = True
-                                for node_inp in node_info.Input[1:]:
-                                    node_2 = graph.node_list[output2node[node_inp][0]]
-                                    if not graph.weight_is_equal(node_1, node_2):
-                                        same_weight = False
-                                        break
-                                if not same_weight:
-                                    continue
+                            ## 判断weight 以及 attr
+                            same_weight = True
+                            for node_inp in node_info.Input[1:]:
+                                node_2 = graph.node_list[output2node[node_inp][0]]
+                                if not graph.weight_is_equal(node_1, node_2):
+                                    same_weight = False
+                                    break
+                            if not same_weight:
+                                continue
                             has_change = True
                             node_info_input = []
                             new_node_name = None
@@ -149,17 +253,52 @@ def remove_op(graph: Graph):
                             output2node[new_name] = [node_name]
                             cur_index = output2node[output_].index(node_name)
                             output2node[output_][cur_index] = new_node_name
-                            if has_weight:
-                                new_node = NodeInfo(op_typ, [new_name] , [output_], node_1.Parameters, other, InputIndex=node_1.InputIndex)
-                            else:
-                                new_node = NodeInfo(op_typ, [new_name] , [output_], [], other, InputIndex=[0])
+                            new_node = NodeInfo(op_typ, [new_name] , [output_], node_1.Parameters, other, InputIndex=node_1.InputIndex)
                             graph.add_node(new_node, new_node_name)
             elif node_info.Type == "Route":
                 op_type = []
                 other_list = []
                 for out in node_info.Output:
                     try:
-                        if len(input2node[out]) == 1:
+                        ## TODO: 我们可以讨论route的输出可以作为多个节点输入的情况
+                        """
+                        我们只讨论输出为单个的算子
+
+                        讨论Route节点的每个输出连接到哪些节点
+                        例如：
+                        out1 -> [A1, C1] 
+                        out2 -> [B2, C2]
+                        out3 -> [A3, B3]
+
+                        我们需要找到可以batch的节点
+                        [A1, A3]
+                        [B2, B3]
+                        [C1, C2]
+
+                        对于这些节点我们需要再次进行fusion 操作：
+                        1. 将这些节点fuse 为一个节点，其中如果该节点不止一个输入，那么我们对他们的每个index的输入都加一个Merge Op
+                        2. 在这个fuse的节点后添加一个Route Op。
+
+
+                        事实上我们只需要 Route-Merge 消解 的 情况，其他的情况仍是算子融合。
+
+                        对Merge节点的每个输入，注意这里的输入只能作为一个节点的输出【重要】
+                        我们有：
+                        in1 -> [A1]
+                        in2 -> [A2]
+                        in3 -> [B3]
+                        得到batch 的节点 [A1, A2], 这里直接将这两个节点融合，并在上一层添加Merge节点；这里其实最好还是添加Route节点。
+
+                        消解规则：
+                            1. 如果为一一映射，即Route的所有输出为Merge的所有输入，那么添加Identity节点。
+                            2. 如果Merge的所有输入包含Route的所有输出，那么此时 去除 Route 节点；
+                            3. 如果Route的所有输出包含Merge的所有输入，不考虑这种情况。【暂时不考虑】
+                        
+                            
+                        我们这么操作，每次迭代先添加后消解
+                        """
+                        if True:
+                        # if len(input2node[out]) == 1:
                             after_route = graph.node_list[input2node[out][0]]
                             if after_route.Type != "Merge" and after_route.Can_batch: #and (not after_route.has_weight(False)):
                                 op_type.append(after_route.Type)
@@ -172,16 +311,14 @@ def remove_op(graph: Graph):
                     other = other_list[0]
                     if all((type == op_typ for type in op_type[1:])) and all((other == oth for oth in other_list[1:])):
                         node_1 = graph.node_list[input2node[node_info.Output[0]][0]]
-                        has_weight = node_1.has_weight(False)
-                        if has_weight:
-                            same_weight = True
-                            for node_inp in node_info.Output[1:]:
-                                node_2 = graph.node_list[input2node[node_inp][0]]
-                                if not graph.weight_is_equal(node_1, node_2):
-                                    same_weight = False
-                                    break
-                            if not same_weight:
-                                continue
+                        same_weight = True
+                        for node_inp in node_info.Output[1:]:
+                            node_2 = graph.node_list[input2node[node_inp][0]]
+                            if not graph.weight_is_equal(node_1, node_2):
+                                same_weight = False
+                                break
+                        if not same_weight:
+                            continue
                         has_change = True
                         node_info_output = []
                         new_node_name = None
@@ -219,11 +356,7 @@ def remove_op(graph: Graph):
                         input2node[input_][cur_index] = new_node_name
                         para_list = node_1.Parameters
                         index_list = node_1.InputIndex
-                        # if has_weight:
-                        if has_weight:
-                            new_node = NodeInfo(op_typ, [input_] , [new_name], para_list, other, InputIndex=index_list)
-                        else:
-                            new_node = NodeInfo(op_typ, [input_] , [new_name], [], other, InputIndex=[0])
+                        new_node = NodeInfo(op_typ, [input_] , [new_name], para_list, other, InputIndex=index_list)
                         graph.add_node(new_node, new_node_name)
 
     remove_identity(graph)
@@ -247,3 +380,153 @@ def remove_identity(graph: Graph):
 
     for key in remove_key:
         del graph.node_list[key]
+
+
+def fuse_other(graph: Graph):
+    """
+    可以泛化到多个输出的情况
+
+    讨论Route节点的每个输出连接到哪些节点
+    例如：
+    out1 -> [A1, C1] 
+    out2 -> [B2, C2]
+    out3 -> [A3, B3]
+
+    我们需要找到可以batch的节点
+    [A1, A3]
+    [B2, B3]
+    [C1, C2]
+
+    对于这些节点我们需要再次进行fusion 操作：
+    1. 将这些节点fuse 为一个节点，其中如果该节点不止一个输入，那么我们对他们的每个index的输入都加一个Merge Op
+    2. 在这个fuse的节点后添加一个Route Op。
+
+
+    事实上我们只需要 Route-Merge 消解 的 情况，其他的情况仍是算子融合。
+
+    对Merge节点的每个输入，注意这里的输入只能作为一个节点的输出【重要】
+    我们有：
+    in1 -> [A1]
+    in2 -> [A2]
+    in3 -> [B3]
+    得到batch 的节点 [A1, A2], 这里直接将这两个节点融合，并在上一层添加Merge节点；这里其实最好还是添加Route节点。
+
+    """
+    input2node, _ , custom_list = get_map(graph)
+    custom_list_info = list(custom_list.values())
+    for node_info in custom_list_info:
+        if node_info.Type == "Route":
+            node_dict = {}
+            for out in node_info.Output:
+                node_dict[out] = input2node[out]
+            print(node_dict)
+            equivalent_sets = find_equivalent_sets(node_dict, graph)
+            # print(equivalent_sets)
+            for eqset in equivalent_sets:
+                if len(eqset) > 1:
+                    op = graph.node_list[eqset[0]]
+                    op_input = [[inp] for inp in op.Input]
+                    op_output = [[out] for out in op.Output]
+
+                    for eqs in eqset[1:]:
+                        cur_node = graph.node_list[eqs]
+                        for idx, inp in enumerate(cur_node.Input):
+                            op_input[idx].append(inp)
+                        for idx, out in enumerate(cur_node.Output):
+                            op_output[idx].append(out)
+
+                        del graph.node_list[eqs]
+
+                    for idx, inp in enumerate(op_input):
+                        assert len(inp) > 1
+                        merge_op = NodeInfo('Merge', inp, [op_input[idx][0] + '_m1o2c3', op_input[idx][0] + '_a1d2d3'], [], None)
+                        op.Input[idx] = op_input[idx][0] + '_m1o2c3'
+                        new_name = op_input[idx][0] + '_merge'
+                        graph.add_node(merge_op, new_name)
+                        # input2node[inp] = new_name
+                        for idxx, iinp in enumerate(inp):
+                            # print(iinp)
+                            # # index = input2node[iinp].index(iinp)
+                            # input2node[input2node[iinp].index()] = new_name
+                            # input2node[iinp].append(new_name)
+                            # for eqs in eqset:
+                            input2node[iinp].remove(eqset[idxx])
+                            input2node[iinp].append(new_name)
+
+
+                    for idx, out in enumerate(op_output):
+                        assert len(out) > 1
+                        route_op = NodeInfo('Route', [op_output[idx][0] + '_m2o1c3', op_input[0][0] + '_a1d2d3'], op_output[idx], [], None)
+                        op.Output[idx] = op_output[idx][0] + '_m2o1c3'
+                        graph.add_node(route_op, op_output[idx][0] + '_route')
+                        ## 这里我们打算将route节点加入到需要测试的节点中。
+                        custom_list_info.append(route_op)
+
+        elif node_info.Type == "Merge":
+            # 只需要考虑fuse节点的输出不能作为多个节点的输入
+            node_dict = {}
+            # for inp in node_info.Input:
+                # node_dict[out] = input2node[out]
+            equivalent_sets = find_equivalent_sets(node_dict, graph)
+
+            for eqset in equivalent_sets:
+                if len(eqset) > 1:
+                    op = graph.node_list[eqset[0]]
+                    op_input = [[inp] for inp in op.Input]
+                    op_output = [[out] for out in op.Output]
+
+                    for eqs in eqset[1:]:
+                        cur_node = graph.node_list[eqs]
+                        for idx, inp in enumerate(cur_node.Input):
+                            op_input[idx].append(inp)
+                        for idx, out in enumerate(cur_node.Output):
+                            op_output[idx].append(out)
+
+                        del graph.node_list[eqs]
+
+                    # 需要fuse节点的输出不能作为多个节点的输入
+                    for out in op_output:
+                        if len(input2node[out]) > 1:
+                            continue
+                    # 开始加节点
+
+                    for idx, inp in enumerate(op_input):
+                        assert len(inp) > 1
+                        merge_op = NodeInfo('Merge', inp, [op_input[idx][0] + '_m1o2c3', op_input[idx][0] + '_a1d2d3'], [], None)
+                        op.Input[idx] = op_input[idx][0] + '_m1o2c3'
+                        graph.add_node(merge_op, op_input[idx][0] + '_merge')
+                        for iinp in inp:
+                            input2node[iinp] = op_input[idx][0] + '_merge'
+
+                    for idx, out in enumerate(op_output):
+                        assert len(out) > 1
+                        route_op = NodeInfo('Route', [op_output[idx][0] + '_m2o1c3', op_input[0][0] + '_a1d2d3'], op_output[idx], [], None)
+                        op.Output[idx] = op_output[idx][0] + '_m2o1c3'
+                        graph.add_node(route_op, op_output[idx][0] + '_route')
+                        ## 这里我们打算将route节点加入到需要测试的节点中。
+                        # custom_list[op_output[idx][0] + '_route'] = route_op      
+                        custom_list_info.append(route_op)            
+
+
+def clean_unused_node(graph: Graph):
+    # print('Clean unused node Start!')
+    has_change = True
+    while has_change:
+        has_change = False
+        all_input = set()
+        for node in graph.node_list.values():
+            all_input.update(node.Input)
+        all_input = all_input | set(output.name for output in graph.output)
+        node_list = []
+        for node in graph.node:
+            if all_input.isdisjoint(node.output):
+                has_change = True
+                node_list.append(node)
+        for node in node_list:
+            graph.node.remove(node)
+    print('Clean unused node Complete!')
+
+def combine(graph: Graph):
+    fuse_other(graph)
+    eliminate_op(graph)
+    remove_identity(graph)

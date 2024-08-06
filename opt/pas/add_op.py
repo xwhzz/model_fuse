@@ -37,7 +37,7 @@ def add_op(graph: Graph, no_batch_input: list[int] | None = None, no_batch_outpu
         if len(out) == 1 or (no_batch_output is not None and idx in no_batch_output):
             output_list.extend(out)
             continue
-        merge_op = NodeInfo('Merge', out, [f'output_{idx}', 'info_'], [], None)
+        merge_op = NodeInfo('Merge', out, [f'output_{idx}', f'info_{idx}'], [], None)
         graph.add_node(merge_op, f'merge_{idx}')
         output_list.append(f'output_{idx}')
 
