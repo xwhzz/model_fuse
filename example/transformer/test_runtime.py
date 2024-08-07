@@ -49,7 +49,7 @@ def test_res(model_num: int, index: list[int], data):
     res_cat = np.concatenate(res, axis=0)
     fuse_res = run_fuse(model_num, index, data)
     """
-    注意之前存在误差的原因是，onnxruntime会进行graph-level optimization，例如对于transformer的第一层的op会fusion成一个layernorm算子。
+    仍然存在误差
     """
     assert np.allclose(res_cat, fuse_res, atol=1e-5), (res_cat, fuse_res)
 

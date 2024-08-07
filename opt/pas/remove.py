@@ -24,7 +24,7 @@ def get_map(graph: Graph):
 
     return input2node, output2node, custom_list
 
-def find_equivalent_sets(node_dict, g: Graph):
+def find_equivalent_sets(node_dict, g: Graph, flag: bool = True):
 
     node_to_set = {}
 
@@ -36,17 +36,16 @@ def find_equivalent_sets(node_dict, g: Graph):
     equal = g.weight_is_equal
     for key, node_list in node_dict.items():
         for node in node_list:
-            # assert node != '0', "Node name cannot be 0"
             if (node, key) not in node_to_set:
                 found_equivalent = False
                 for (existing_node, existing_key), existing_set in node_to_set.items():
-                    # print(existing_node, existing_key)
-                    ekey_index = g.node_list[existing_node].Input.index(existing_key)
-                    key_index = g.node_list[node].Input.index(key)
-                    # print(node, existing_node)
+                    if flag:
+                        ekey_index = g.node_list[existing_node].Input.index(existing_key)
+                        key_index = g.node_list[node].Input.index(key)
+                    else:
+                        ekey_index = g.node_list[existing_node].Output.index(existing_key)
+                        key_index = g.node_list[node].Output.index(key)
                     if equal(g.node_list[node], g.node_list[existing_node], key_index, ekey_index) and key not in set_keys[existing_set]:
-
-                        # equivalent_sets[existing_set].append((node, key))
                         equivalent_sets[existing_set].append(node)
                         node_to_set[(node, key)] = existing_set
                         set_keys[existing_set].add(key)
@@ -394,7 +393,7 @@ def remove_identity(graph: Graph):
         del graph.node_list[key]
 
 
-def fuse_other(graph: Graph):
+def fuse_other(graph: Graph) -> bool:
     """
     可以泛化到多个输出的情况
 
@@ -424,18 +423,21 @@ def fuse_other(graph: Graph):
     得到batch 的节点 [A1, A2], 这里直接将这两个节点融合，并在上一层添加Merge节点；这里其实最好还是添加Route节点。
 
     """
-    input2node, _ , custom_list = get_map(graph)
+    has_change = False
+    input2node, output2node , custom_list = get_map(graph)
     custom_list_info = list(custom_list.values())
     for node_info in custom_list_info:
         if node_info.Type == "Route":
             node_dict = {}
             for out in node_info.Output:
-                node_dict[out] = input2node[out]
+                if out in input2node:
+                    node_dict[out] = input2node[out]
             # print(node_dict)
             equivalent_sets = find_equivalent_sets(node_dict, graph)
             # print(equivalent_sets)
             for eqset in equivalent_sets:
                 if len(eqset) > 1:
+                    has_change = True
                     op = graph.node_list[eqset[0]]
                     op_input = [[inp] for inp in op.Input]
                     op_output = [[out] for out in op.Output]
@@ -468,21 +470,27 @@ def fuse_other(graph: Graph):
 
                     for idx, out in enumerate(op_output):
                         assert len(out) > 1
-                        route_op = NodeInfo('Route', [op_output[idx][0] + '_m2o1c3', op_input[0][0] + '_a1d2d3'], op_output[idx], [], None)
+                        route_op = NodeInfo('Route', [op_output[idx][0] + '_m2o1c3', op_input[0][0] + '_a1d2d3'], out, [], None)
                         op.Output[idx] = op_output[idx][0] + '_m2o1c3'
-                        graph.add_node(route_op, op_output[idx][0] + '_route')
+                        new_name = op_output[idx][0] + '_route'
+                        graph.add_node(route_op, new_name)
                         ## 这里我们打算将route节点加入到需要测试的节点中。
                         custom_list_info.append(route_op)
+                        for idxx, oout in enumerate(out):
+                            output2node[oout].remove(eqset[idxx])
+                            output2node[oout].append(new_name)
 
         elif node_info.Type == "Merge":
             # 只需要考虑fuse节点的输出不能作为多个节点的输入
             node_dict = {}
-            # for inp in node_info.Input:
-                # node_dict[out] = input2node[out]
-            equivalent_sets = find_equivalent_sets(node_dict, graph)
+            for inp in node_info.Input:
+                if inp in output2node:
+                    node_dict[inp] = output2node[inp]
+            equivalent_sets = find_equivalent_sets(node_dict, graph, False)
 
             for eqset in equivalent_sets:
                 if len(eqset) > 1:
+                    has_change = True
                     op = graph.node_list[eqset[0]]
                     op_input = [[inp] for inp in op.Input]
                     op_output = [[out] for out in op.Output]
@@ -495,50 +503,65 @@ def fuse_other(graph: Graph):
                             op_output[idx].append(out)
 
                         del graph.node_list[eqs]
+                    
+                    # # 需要fuse节点的输出不能作为多个节点的输入
+                    # for out_ in op_output:
+                    #     for out in out_:
+                    #         if len(input2node[out]) > 1:
 
-                    # 需要fuse节点的输出不能作为多个节点的输入
-                    for out in op_output:
-                        if len(input2node[out]) > 1:
-                            continue
+                                
                     # 开始加节点
 
                     for idx, inp in enumerate(op_input):
                         assert len(inp) > 1
                         merge_op = NodeInfo('Merge', inp, [op_input[idx][0] + '_m1o2c3', op_input[idx][0] + '_a1d2d3'], [], None)
                         op.Input[idx] = op_input[idx][0] + '_m1o2c3'
-                        graph.add_node(merge_op, op_input[idx][0] + '_merge')
-                        for iinp in inp:
-                            input2node[iinp] = op_input[idx][0] + '_merge'
+                        new_name = op_input[idx][0] + '_merge'
+                        graph.add_node(merge_op, new_name)
+                        custom_list_info.append(merge_op)
+                        for idxx, iinp in enumerate(inp):
+                            input2node[iinp].remove(eqset[idxx])
+                            input2node[iinp].append(new_name)
+
 
                     for idx, out in enumerate(op_output):
                         assert len(out) > 1
-                        route_op = NodeInfo('Route', [op_output[idx][0] + '_m2o1c3', op_input[0][0] + '_a1d2d3'], op_output[idx], [], None)
+                        route_op = NodeInfo('Route', [op_output[idx][0] + '_m2o1c3', op_input[0][0] + '_a1d2d3'], out, [], None)
                         op.Output[idx] = op_output[idx][0] + '_m2o1c3'
-                        graph.add_node(route_op, op_output[idx][0] + '_route')
-                        ## 这里我们打算将route节点加入到需要测试的节点中。
-                        # custom_list[op_output[idx][0] + '_route'] = route_op      
-                        custom_list_info.append(route_op)            
+                        new_name = op_output[idx][0] + '_route'
+                        graph.add_node(route_op, new_name)    
+                        for idxx, oout in enumerate(out):
+                            output2node[oout].remove(eqset[idxx])
+                            output2node[oout].append(new_name)         
 
+    return has_change
 
 def clean_unused_node(graph: Graph):
-    # print('Clean unused node Start!')
     has_change = True
     while has_change:
         has_change = False
         all_input = set()
         for node in graph.node_list.values():
             all_input.update(node.Input)
-        all_input = all_input | set(output.name for output in graph.output)
+        assert isinstance(graph.output, list), "Output should be a list"
+        all_input.update(graph.output)
         node_list = []
-        for node in graph.node:
-            if all_input.isdisjoint(node.output):
-                has_change = True
-                node_list.append(node)
+        for name, node in graph.node_list.items():
+            if all_input.isdisjoint(node.Output):
+                node_list.append(name)
+        has_change = len(node_list) > 0
         for node in node_list:
-            graph.node.remove(node)
-    print('Clean unused node Complete!')
+            del graph.node_list[node]
 
 def combine(graph: Graph):
-    fuse_other(graph)
-    eliminate_op(graph)
-    remove_identity(graph)
+    has_change = True
+    index = 0
+    while has_change:
+    # if True:
+        index += 1
+        print(f'{index} try.')
+        has_change = False
+        has_change = fuse_other(graph)
+        eliminate_op(graph)
+        remove_identity(graph)
+        clean_unused_node(graph)

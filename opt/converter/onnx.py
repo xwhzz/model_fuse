@@ -162,7 +162,7 @@ class ONNXConverter(Converter):
             g.node.extend([self.info2node(node, name)])
             
         self.clean_unused_initializers(g)
-        self.clean_unused_node(g)
+        # self.clean_unused_node(g)
         return g
 
 
