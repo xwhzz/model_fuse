@@ -2,6 +2,7 @@ import onnx.onnx_pb
 from opt.graph import *
 from opt.converter.base import Converter
 import onnx
+import onnxoptimizer
 
 
 class ONNXConverter(Converter):
@@ -77,7 +78,6 @@ class ONNXConverter(Converter):
 
     def info2tensor(self, para: ParameterInfo) -> onnx.TensorProto:
         tensor = onnx.numpy_helper.from_array(para.value)
-
         return tensor
 
     def info2node(self, node: NodeInfo, name: str) -> onnx.NodeProto:
@@ -148,16 +148,34 @@ class ONNXConverter(Converter):
     def from_graph(self, graph: Graph, num: int=2) -> onnx.GraphProto:
         g = onnx.GraphProto()
         g.name = 'Fused model'
-
         g.input.extend([self.str2value(inp, True, idx) for idx, inp in enumerate(graph.input)])
         g.output.extend([self.str2value(out, False, idx) for idx, out in enumerate(graph.output)])
-
+        index = 0
         for para in graph.paramter_list.values():
             for name, p in para.items():
-                tensor = self.info2tensor(p)
-                tensor.name = name
-                g.initializer.append(tensor)
+                if name in graph.constants:
+                    g.node.extend([onnx.helper.make_node('Constant', [], [name], name=f"Constant_{index}", value=self.info2tensor(p))])
+                    index += 1
+                    # constant_list.append((name, p))
+                else:
+                    tensor = self.info2tensor(p)
+                    tensor.name = name
+                    g.initializer.append(tensor)
         
+        # new_constant_list = []
+        # for cons in constant_list:
+        #     for ls in new_constant_list:
+        #         if cons[1].value.shape == ls[0][1].value.shape and np.allclose(cons[1].value, ls[0][1].value):
+        #             ls.append(cons)
+        #             break
+        #     else:
+        #         new_constant_list.append([cons])
+
+        # for idx, cons in enumerate(new_constant_list):
+        #     g.node.extend([onnx.helper.make_node('Constant', [], [f"constant_{idx}"], name=f"Constant_{idx}", value=self.info2tensor(cons[0][1]))])
+        #     for name, _ in cons:
+        #         g.node.extend([onnx.helper.make_node('Identity', [f"constant_{idx}"], [name], name=f"Identity_{name}")])
+
         for name, node in graph.node_list.items():
             g.node.extend([self.info2node(node, name)])
             
@@ -202,10 +220,13 @@ class ONNXConverter(Converter):
         print('Clean unused node Complete!')
 
     @staticmethod
-    def export_file(graph: onnx.GraphProto, file_name: str='fused_model.onnx'):
+    def export_file(graph: onnx.GraphProto, file_name: str='fused_model.onnx', large: bool = False):
         model = onnx.helper.make_model(graph)
         model.opset_import[0].version = 14
-        onnx.save(model, file_name)
-
+        # model = onnxoptimizer.optimize(model, ['eliminate_identity'])
+        if large:
+            onnx.save_model(model, file_name, save_as_external_data=True, all_tensors_to_one_file=True, location="model.onnx_data", size_threshold=1024, convert_attribute=False)
+        else:
+            onnx.save(model, file_name)
 
 

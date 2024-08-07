@@ -562,6 +562,8 @@ def combine(graph: Graph):
         print(f'{index} try.')
         has_change = False
         has_change = fuse_other(graph)
+        if not has_change:
+            break
         eliminate_op(graph)
         remove_identity(graph)
         clean_unused_node(graph)

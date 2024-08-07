@@ -8,7 +8,7 @@ def fuse_base(g_1: Graph, g_2: Graph) -> Graph:
     fuse_graph.name2shape.update(g_2.name2shape)
     for node_name, node_info in g_2.node_list.items():
         has_same = False
-        if node_info.has_weight(graph=g_2) and node_info.Can_batch:#can_batch(g_2.name2shape):
+        if node_info.has_weight(graph=g_2): #and node_info.Can_batch:#can_batch(g_2.name2shape):
             same_ps = set()
             has_same = True
             for idx, para in enumerate(node_info.Parameters):

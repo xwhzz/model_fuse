@@ -23,32 +23,29 @@ class NodeInfo:
     InputIndex: list[int] | None = None
     # num: int = 1
 
-    def has_weight(self, flag: bool = True, graph = None) -> bool:
-        if flag and graph is not None:
+    def has_weight(self, graph = None) -> bool:
+        if graph is not None:
             has_weight = False
             for para in self.Parameters:
                 if para not in graph.constants:
                     has_weight = True
                     break
-            return has_weight # or (self.Type == "MatMul" and len(self.Parameters) > 0 )
-            # return (self.Type == "MatMul" or self.Type == "Gemm") and len(self.Parameters) > 0
+            return has_weight and len(self.Input) == 1 and len(self.Output) == 1
         else:
             return len(self.Parameters) > 0
     
-    def can_batch(self, name2shape, input_default: int=1) -> bool:
+    def can_batch(self, name2shape,input_default: int=1) -> bool:
         ## 可以扩展到多个输入的情况
-        # input_flag = True
-        # for inp in self.Input[:input_default]:
+        """
+        这里假设参数都是可以batch的
+        """
         for inp in self.Input:
             if not name2shape[inp]:
-                # input_flag = False
-                # break
                 return False
         for out in self.Output:
             if not name2shape[out]:
                 return False
         return True
-        # return len(self.Output) == 1 and name2shape[self.Output[0]] and input_flag and len(self.Input) == input_default
     
 @dataclass
 class ParameterInfo:
@@ -81,6 +78,7 @@ class Graph:
         self.name2shape: dict[str, bool] = {}
 
         self.constants: set[str] = set()
+        
 
     def add_node(self, node: NodeInfo, name: str):
         self.node_list[name] = node
