@@ -62,16 +62,32 @@ def find_equivalent_sets(node_dict, g: Graph):
 
     return list(equivalent_sets.values())
 
-def linear_heritance(queue_list: list[deque], element: tuple[str,str]):
-    for queue in queue_list:
-        if element[1] == queue[0]:
-            queue.appendleft(element[0])
-            break
-        elif element[0] == queue[-1]:
-            queue.append(element[1])
-            break
-    else:
-        queue_list.append(deque(element))
+def find_chains(tuples: list[tuple[str,str]]) -> list[list[str]]:
+    graph = defaultdict(list)
+    in_degree = defaultdict(int)
+    
+    for src, dst in tuples:
+        graph[src].append(dst)
+        in_degree[dst] += 1
+        if src not in in_degree:
+            in_degree[src] = 0
+    
+    sources = [node for node, degree in in_degree.items() if degree == 0]
+    def dfs(node, path, paths):
+        if not graph[node]: 
+            paths.append(path)
+            return
+        
+        for neighbor in graph[node]:
+            dfs(neighbor, path + [neighbor], paths)
+    
+    all_paths = []
+    for source in sources:
+        paths = []
+        dfs(source, [source], paths)
+        all_paths.extend(paths)
+    
+    return all_paths
 
 
 def eliminate_op(graph: Graph):
@@ -105,7 +121,6 @@ def eliminate_op(graph: Graph):
                     for idx, out in enumerate(route_node.Output):
                         merge_input_ls.remove(out) 
                     route_inp = route_node.Input[0]
-                    # route_info = route_node.Input[1]
                     merge_input_ls.append(route_inp)
 
                     if len(merge_input_ls) == 1:
@@ -114,19 +129,16 @@ def eliminate_op(graph: Graph):
                         if node_info.Output[1] in input2node:
                             for nnode in input2node[node_info.Output[1]]:
                                 if graph.node_list[nnode].Type == "Route":
-                                    # next_route = graph.node_list[nnode]
-                                    # 注意这里我们最后再加info，因为此处具有链式继承关系
-                                    # next_route.Input[1] = route_info
-                                    linear_heritance(queue_list, (name, nnode))
+                                    queue_list.append((name, nnode))
 
                         new_node = NodeInfo("Identity", [route_inp] , [node_info.Output[0]], [], None)
                         graph.add_node(new_node, node_name + '_id')
 
                     node_info.Input = merge_input_ls
-
+    queue_list = find_chains(queue_list)
     for queue in queue_list:
-        # ori_route_info = graph.node_list[queue[0]].Input[1]
-        graph.node_list[queue[-1]].Input[1] = graph.node_list[queue[0]].Input[1]
+        for q in queue[1:]:
+            graph.node_list[q].Input[1] = graph.node_list[queue[0]].Input[1]
 
 
 def remove_op(graph: Graph):
@@ -419,7 +431,7 @@ def fuse_other(graph: Graph):
             node_dict = {}
             for out in node_info.Output:
                 node_dict[out] = input2node[out]
-            print(node_dict)
+            # print(node_dict)
             equivalent_sets = find_equivalent_sets(node_dict, graph)
             # print(equivalent_sets)
             for eqset in equivalent_sets:
