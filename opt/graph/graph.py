@@ -67,10 +67,9 @@ class ParameterInfo:
 class Graph:
     def __init__(self):
         self.node_list: dict[str, NodeInfo] = {}
-        self.paramter_list: dict[int, dict[str, ParameterInfo]] = { }
-
+        self.paramter_list: dict[int, dict[str, ParameterInfo]] = {}
+        
         self.name2para: dict[str, int] = {}
-        # extend to support multiple inputs and outputs
         # FIXME: support inputs with no batch size
         self.input: list[list[str] | str] = []
         self.output: list[list[str] | str] = []
@@ -96,21 +95,23 @@ class Graph:
 
     def weight_is_equal(self, node1: NodeInfo, node2: NodeInfo, node1_index: int=0, node2_index: int=0) -> bool:
         if node1.Type == node2.Type and len(node1.Parameters) == len(node2.Parameters) and node1_index == node2_index:
-            # try:
-            #     for inp in node1.Input:
-            #         if not self.name2shape[inp]:
-            #             return False
-            #     for out in node1.Output:
-            #         if not self.name2shape[out]:
-            #             return False
-            #     for inp in node2.Input:
-            #         if not self.name2shape[inp]:
-            #             return False
-            #     for out in node2.Output:
-            #         if not self.name2shape[out]:
-            #             return False
-            # except:
-            #     pass
+            """
+            try:
+                for inp in node1.Input:
+                    if not self.name2shape[inp]:
+                        return False
+                for out in node1.Output:
+                    if not self.name2shape[out]:
+                        return False
+                for inp in node2.Input:
+                    if not self.name2shape[inp]:
+                        return False
+                for out in node2.Output:
+                    if not self.name2shape[out]:
+                        return False
+            except:
+                pass
+            """
             if not node1.Can_batch:
                 return False
             if not node2.Can_batch:

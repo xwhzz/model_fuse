@@ -2930,8 +2930,9 @@ class SymbolicShapeInference:
             all_shapes_inferred = symbolic_shape_inference._infer_impl()
         symbolic_shape_inference._update_output_from_vi()
         if not all_shapes_inferred:
-            onnx.save_model(symbolic_shape_inference.out_mp_, "sym_shape_infer_temp.onnx", save_as_external_data=True)
-            raise Exception("Incomplete symbolic shape inference")
+            # onnx.save_model(symbolic_shape_inference.out_mp_, "sym_shape_infer_temp.onnx", save_as_external_data=True)
+            # raise Exception("Incomplete symbolic shape inference")
+            print("Incomplete symbolic shape inference")
         return symbolic_shape_inference.out_mp_
 
 
@@ -3013,6 +3014,7 @@ if __name__ == "__main__":
                 size_threshold=args.external_data_size_threshold,
                 convert_attribute=False,
             )
+            # onnx.save_model(out_mp, args.output, save_as_external_data=True, all_tensors_to_one_file=True, location="filename", size_threshold=1024, convert_attribute=False)
         else:
             onnx.save(out_mp, args.output)
         logger.info("Done!")

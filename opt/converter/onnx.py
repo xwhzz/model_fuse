@@ -79,6 +79,18 @@ class ONNXConverter(Converter):
     def info2tensor(self, para: ParameterInfo) -> onnx.TensorProto:
         tensor = onnx.numpy_helper.from_array(para.value)
         return tensor
+    
+    @staticmethod
+    def create_merge(node_input, node_output, name):
+        concat_1 = onnx.helper.make_node('Concat', inputs=node_input, outputs=node_output[0:1], axis=0, name=name+"_c1")
+        shape_op = []
+        concat_2_in = []
+        for inp in node_input:
+            shape_op.append(onnx.helper.make_node('Shape', inputs=[inp], outputs=[inp+"_shape"], name=inp+"_s"))
+            concat_2_in.append(inp+"_shape")
+        concat_2 = onnx.helper.make_node('Concat', inputs=concat_2_in, outputs=node_output[1:], axis=0, name=name+"_c2")
+
+        return [concat_1, *shape_op, concat_2]
 
     def info2node(self, node: NodeInfo, name: str) -> onnx.NodeProto:
         if not (node.Type == "Merge" or node.Type == "Route"):
@@ -94,17 +106,20 @@ class ONNXConverter(Converter):
                 index += 1
         else:
             node_input = node.Input
-        domain = None
         ## 自定义算子
         if node.Type == "Route":
             node.Type = "Split"
+            new_node = [onnx.helper.make_node(node.Type, node_input, node.Output, name)]
         elif node.Type == "Merge":
             # node.Type = "Concat"
-            domain = "test.customop"
+            # domain = "test.customop"
             # node.Other = [onnx.helper.make_attribute("is_merge", 1), onnx.helper.make_attribute("axis", 0)]
-        new_node = onnx.helper.make_node(node.Type, node_input, node.Output, name, domain=domain)
-        if node.Other:
-            new_node.attribute.extend(node.Other)
+        # new_node = onnx.helper.make_node(node.Type, node_input, node.Output, name, domain=domain)
+            new_node = self.create_merge(node_input, node.Output, name)
+        else:
+            new_node = [onnx.helper.make_node(node.Type, node_input, node.Output, name,)]
+            if node.Other:
+                new_node[0].attribute.extend(node.Other)
         return new_node
 
 
@@ -177,7 +192,8 @@ class ONNXConverter(Converter):
         #         g.node.extend([onnx.helper.make_node('Identity', [f"constant_{idx}"], [name], name=f"Identity_{name}")])
 
         for name, node in graph.node_list.items():
-            g.node.extend([self.info2node(node, name)])
+            # g.node.extend([self.info2node(node, name)])
+            g.node.extend(self.info2node(node, name))
             
         self.clean_unused_initializers(g)
         # self.clean_unused_node(g)
