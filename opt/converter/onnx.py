@@ -2,7 +2,7 @@ import onnx.onnx_pb
 from opt.graph import *
 from opt.converter.base import Converter
 import onnx
-import onnxoptimizer
+# import onnxoptimizer
 
 
 class ONNXConverter(Converter):
@@ -83,18 +83,28 @@ class ONNXConverter(Converter):
         return tensor
     
     @staticmethod
-    def create_merge(node_input, node_output, name):
+    def create_merge(node_input, node_output, name, node_list):
         concat_1 = onnx.helper.make_node('Concat', inputs=node_input, outputs=node_output[0:1], axis=0, name=name+"_c1")
         shape_op = []
         concat_2_in = []
-        for idx, inp in enumerate(node_input):
-            shape_op.append(onnx.helper.make_node('Shape', inputs=[inp], outputs=[f"{name}_{idx}_shape"], name=f"{name}_{idx}_s", end=1))
-            concat_2_in.append(f"{name}_{idx}_shape")
-        concat_2 = onnx.helper.make_node('Concat', inputs=concat_2_in, outputs=node_output[1:], axis=0, name=name+"_c2")
+        node_info = node_output[1]
+        flag = False
+        concat_2 = []
+        for iinfo in node_list:
+            if node_info in iinfo.Input:
+                flag = True
+                break
+        if flag:
+            for idx, inp in enumerate(node_input):
+                shape_op.append(onnx.helper.make_node('Shape', inputs=[inp], outputs=[f"{name}_{idx}_shape"], name=f"{name}_{idx}_s", end=1))
+                concat_2_in.append(f"{name}_{idx}_shape")
+            concat_2.append(onnx.helper.make_node('Concat', inputs=concat_2_in, outputs=node_output[1:], axis=0, name=name+"_c2"))
 
-        return [concat_1, *shape_op, concat_2]
+        return [concat_1, *shape_op] + concat_2
+    
 
-    def info2node(self, node: NodeInfo, name: str) -> onnx.NodeProto:
+
+    def info2node(self, node: NodeInfo, name: str, node_list) -> onnx.NodeProto:
         if not (node.Type == "Merge" or node.Type == "Route"):
             assert len(node.Input) + len(node.Parameters) == len(node.InputIndex)
             index_list = node.InputIndex
@@ -117,7 +127,7 @@ class ONNXConverter(Converter):
             # domain = "test.customop"
             # node.Other = [onnx.helper.make_attribute("is_merge", 1), onnx.helper.make_attribute("axis", 0)]
         # new_node = onnx.helper.make_node(node.Type, node_input, node.Output, name, domain=domain)
-            new_node = self.create_merge(node_input, node.Output, name)
+            new_node = self.create_merge(node_input, node.Output, name, node_list)
         else:
             new_node = [onnx.helper.make_node(node.Type, node_input, node.Output, name,)]
             if node.Other:
@@ -208,7 +218,7 @@ class ONNXConverter(Converter):
         for name, node in graph.node_list.items():
             # g.node.extend([self.info2node(node, name)])
             node.update(mp)
-            g.node.extend(self.info2node(node, name))
+            g.node.extend(self.info2node(node, name, graph.node_list.values()))
             
         self.clean_unused_initializers(g)
         # self.clean_unused_node(g)
