@@ -47,6 +47,14 @@ class NodeInfo:
                 return False
         return True
     
+    def update(self, map):
+        # for inp in self.Input:
+        #     if inp in map:
+                
+        self.Input = [map[i] if i in map else i for i in self.Input]
+        self.Output = [map[i] if i in map else i for i in self.Output]
+        # self.Parameters = [map[i] for i in self.Parameters]
+    
 @dataclass
 class ParameterInfo:
     hash: int

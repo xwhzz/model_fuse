@@ -6,10 +6,12 @@ import onnxoptimizer
 
 
 class ONNXConverter(Converter):
-    def __init__(self, input_type, ouput_type, num):
+    def __init__(self, input_type, ouput_type, num, input_name, output_name):
         self.input_type = input_type
         self.output_type = ouput_type
         self.num = num
+        self.input_name = input_name
+        self.output_name = output_name
 
     def remove_identity(self, graph: onnx.GraphProto):
         for node in graph.node:
@@ -85,9 +87,9 @@ class ONNXConverter(Converter):
         concat_1 = onnx.helper.make_node('Concat', inputs=node_input, outputs=node_output[0:1], axis=0, name=name+"_c1")
         shape_op = []
         concat_2_in = []
-        for inp in node_input:
-            shape_op.append(onnx.helper.make_node('Shape', inputs=[inp], outputs=[inp+"_shape"], name=inp+"_s"))
-            concat_2_in.append(inp+"_shape")
+        for idx, inp in enumerate(node_input):
+            shape_op.append(onnx.helper.make_node('Shape', inputs=[inp], outputs=[f"{name}_{idx}_shape"], name=f"{name}_{idx}_s", end=1))
+            concat_2_in.append(f"{name}_{idx}_shape")
         concat_2 = onnx.helper.make_node('Concat', inputs=concat_2_in, outputs=node_output[1:], axis=0, name=name+"_c2")
 
         return [concat_1, *shape_op, concat_2]
@@ -163,19 +165,31 @@ class ONNXConverter(Converter):
     def from_graph(self, graph: Graph, num: int=2) -> onnx.GraphProto:
         g = onnx.GraphProto()
         g.name = 'Fused model'
-        g.input.extend([self.str2value(inp, True, idx) for idx, inp in enumerate(graph.input)])
-        g.output.extend([self.str2value(out, False, idx) for idx, out in enumerate(graph.output)])
+        # g.input.extend([self.str2value(inp, True, idx) for idx, inp in enumerate(graph.input)])
+        # g.output.extend([self.str2value(out, False, idx) for idx, out in enumerate(graph.output)])
+        mp = {}
+        for idx, inp in enumerate(graph.input):
+            if idx != len(graph.input) - 1:
+                mp[inp] = self.input_name[idx]
+            else:
+                mp[inp] = inp
+        for idx, out in enumerate(graph.output):
+            mp[out] = self.output_name[idx]
+            # else:
+            #     mp[out] = out
+        g.input.extend([self.str2value(mp[inp], True, idx) for idx, inp in enumerate(graph.input)])
+        g.output.extend([self.str2value(mp[out], False, idx) for idx, out in enumerate(graph.output)])
         index = 0
         for para in graph.paramter_list.values():
             for name, p in para.items():
-                if name in graph.constants:
-                    g.node.extend([onnx.helper.make_node('Constant', [], [name], name=f"Constant_{index}", value=self.info2tensor(p))])
-                    index += 1
-                    # constant_list.append((name, p))
-                else:
-                    tensor = self.info2tensor(p)
-                    tensor.name = name
-                    g.initializer.append(tensor)
+                # if name in graph.constants:
+                #     g.node.extend([onnx.helper.make_node('Constant', [], [name], name=f"Constant_{index}", value=self.info2tensor(p))])
+                #     index += 1
+                #     # constant_list.append((name, p))
+                # else:
+                tensor = self.info2tensor(p)
+                tensor.name = name
+                g.initializer.append(tensor)
         
         # new_constant_list = []
         # for cons in constant_list:
@@ -193,6 +207,7 @@ class ONNXConverter(Converter):
 
         for name, node in graph.node_list.items():
             # g.node.extend([self.info2node(node, name)])
+            node.update(mp)
             g.node.extend(self.info2node(node, name))
             
         self.clean_unused_initializers(g)
@@ -238,7 +253,7 @@ class ONNXConverter(Converter):
     @staticmethod
     def export_file(graph: onnx.GraphProto, file_name: str='fused_model.onnx', large: bool = False):
         model = onnx.helper.make_model(graph)
-        model.opset_import[0].version = 14
+        model.opset_import[0].version = 15
         # model = onnxoptimizer.optimize(model, ['eliminate_identity'])
         if large:
             onnx.save_model(model, file_name, save_as_external_data=True, all_tensors_to_one_file=True, location="model.onnx_data", size_threshold=1024, convert_attribute=False)

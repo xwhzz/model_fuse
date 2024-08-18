@@ -5,17 +5,17 @@ np.random.seed(0)
 
 def run_fuse(model_num: int, index: list[int], data):
     so = ort.SessionOptions()
-    so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+    # so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
 
-    so.register_custom_ops_library('../libcustom_op_library.so')
+    # so.register_custom_ops_library('../libcustom_op_library.so')
 
     onnx_model = onnx.load(f'./model/fuse_{model_num}.onnx')
 
-    sess = ort.InferenceSession(onnx_model.SerializeToString(), so, providers=['CPUExecutionProvider'])
+    sess = ort.InferenceSession(onnx_model.SerializeToString(), so, providers=['CUDAExecutionProvider'])
 
     txout = sess.run(None, {
-        'input_0': data,
-        'input_1': np.concatenate([np.arange(0, 10) for _ in range(data.shape[0])]).reshape(-1, 10).astype(np.int64),
+        'hidden_states': data,
+        'position_ids': np.concatenate([np.arange(0, 10) for _ in range(data.shape[0])]).reshape(-1, 10).astype(np.int64),
         "info": np.array(index).astype(np.int64)
         })
     
@@ -23,10 +23,10 @@ def run_fuse(model_num: int, index: list[int], data):
 
 def run_model(path: str, start: int, end: int, data):
     so = ort.SessionOptions()
-    so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+    # so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_DISABLE_ALL
     model = onnx.load(path)
 
-    sess = ort.InferenceSession(model.SerializePartialToString(),so,providers=['CPUExecutionProvider'])
+    sess = ort.InferenceSession(model.SerializePartialToString(),so,providers=['CUDAExecutionProvider'])
 
     txout = sess.run(None, {
         'hidden_states': data[start: end],

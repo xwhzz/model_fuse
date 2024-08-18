@@ -557,13 +557,13 @@ def combine(graph: Graph):
     has_change = True
     index = 0
     while has_change:
-    # if True:
         index += 1
-        print(f'{index} try.')
         has_change = False
         has_change = fuse_other(graph)
         if not has_change:
+            clean_unused_node(graph)
             break
+        print(f'{index} try.')
         eliminate_op(graph)
         remove_identity(graph)
         clean_unused_node(graph)

@@ -20,7 +20,7 @@ if __name__ == '__main__':
     model_num = args.num
 
     g_1 = get_graph('./model/model_1.onnx', 0)
-    converter = ONNXConverter([g_1.input[0].type, g_1.input[1].type], [g_1.output[0].type], model_num)
+    converter = ONNXConverter([g_1.input[0].type, g_1.input[1].type], [g_1.output[0].type], model_num,["hidden_states","position_ids"],["output"])
     g_1 = converter.to_graph(g_1)
     print('Convert g1 to graph!')
     for i in range(1,model_num):
