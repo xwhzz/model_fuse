@@ -3,6 +3,7 @@ import torch
 from peft import get_peft_model, LoraConfig, TaskType
 from torch import nn
 import os
+from copy import deepcopy
 
 if not os.path.exists('./org_model'):
     os.makedirs('./org_model')
@@ -13,7 +14,7 @@ torch.random.manual_seed(0)
 
 model = LlamaForCausalLM.from_pretrained('/data/xwh/CodeLlama-7b-Instruct-hf',use_safetensors=False)
 
-decoder_layer_1 = model.model.layers
+decoder_layer_1 = deepcopy(model.model.layers)
 
 peft_config = LoraConfig(
     task_type=TaskType.CAUSAL_LM, 

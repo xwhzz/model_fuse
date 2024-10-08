@@ -2,3 +2,6 @@ test
 __pycache__
 *.pyc
 *.egg-info
+deprecated
+training
+torch*

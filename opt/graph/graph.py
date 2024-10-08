@@ -1,148 +1,193 @@
 """
 Graph Info
-
 """
 from dataclasses import dataclass
 import numpy as np
 from typing import Any
+from collections import defaultdict
 
+BATCH_SYM = "batch_size"
 
 @dataclass
-class NodeInfo:
+class Edge: 
+    name: str
+    shape: list[str|int]
+    src: str = ""
+    dst: str = ""
+    src_index: int = -1
+    dst_index: int = -1
 
-    Type: str
+    _cached_batch_dim: int | None = None
 
-    Input: list[str]
-    Output: list[str]
-    Parameters: list[str]
-
-    Other: Any
-
-    Can_batch: bool | None = None
-
-    InputIndex: list[int] | None = None
-    # num: int = 1
-
-    def has_weight(self, graph = None) -> bool:
-        if graph is not None:
-            has_weight = False
-            for para in self.Parameters:
-                if para not in graph.constants:
-                    has_weight = True
+    @property
+    def batch_dim(self):
+        if self._cached_batch_dim is None:
+            for idx, s in enumerate(self.shape):
+                if BATCH_SYM == s:
+                    self._cached_batch_dim = idx
                     break
-            return has_weight and len(self.Input) == 1 and len(self.Output) == 1
-        else:
-            return len(self.Parameters) > 0
-    
-    def can_batch(self, name2shape,input_default: int=1) -> bool:
-        ## 可以扩展到多个输入的情况
-        """
-        这里假设参数都是可以batch的
-        """
-        for inp in self.Input:
-            if not name2shape[inp]:
-                return False
-        for out in self.Output:
-            if not name2shape[out]:
-                return False
-        return True
-    
-    def update(self, map):
-        # for inp in self.Input:
-        #     if inp in map:
-                
-        self.Input = [map[i] if i in map else i for i in self.Input]
-        self.Output = [map[i] if i in map else i for i in self.Output]
-        # self.Parameters = [map[i] for i in self.Parameters]
-    
+            else:
+                self._cached_batch_dim = -1
+        return self._cached_batch_dim
+
 @dataclass
-class ParameterInfo:
-    hash: int
+class Parameter:
+    name: str
     value: np.ndarray
     node: str
+    _cached_hash: int | None = None
 
-    @staticmethod
-    def get_hash(value: np.ndarray):
-        # Use more robust hash function
-        return hash(value.tobytes()) 
-
-    @classmethod
-    def get_info(cls, value: np.ndarray, node: str):
-        hash = cls.get_hash(value)
-        return cls(hash, value, node)
+    @property
+    def hash(self):
+        if self._cached_hash is None:
+            self._cached_hash = hash(self.value.tobytes())
+        return self._cached_hash
 
 
+class Node: 
+    def __init__(self, name: str, type: str, inputs: list[str], outputs: list[str], parameters: list[str], constants: list[str], other: Any = None, input_index: list[int] | None = None, can_batch: bool = False, domain: str | None = None, axis: int = -1):
+        self.name = name
+        self.type = type
+        self._inputs = [[inp] for inp in inputs]
+        self._outputs = [[out] for out in outputs]
+        self.parameters = parameters
+        self.constants = constants
+        self.other = other
+        self.input_index = input_index
+        self.can_batch = can_batch
+        self.domain = domain
+        self.fuse = False
+        self.axis = axis
+        self.gather_list = []
+
+    @property
+    def inputs(self):
+        return [item[0] for item in self._inputs if item]
+    
+    @property
+    def outputs(self):
+        return [item[0] for item in self._outputs if item]
+
+    @property
+    def total_input(self):
+        inputs = [None for _ in range(len(self.input_index))]
+        inp_num = len(self.inputs)
+        para_num = len(self.parameters)
+        for i in range(inp_num):
+            inputs[self.input_index[i]] = self.inputs[i]
+        for i in range(para_num):
+            inputs[self.input_index[inp_num+i]] = self.parameters[i]
+        assert all((inp is not None for inp in inputs)), "All input should not be None."
+        return inputs
+    
+    @property
+    def gather(self):
+        assert self.type == "Route", "Only Route node can be gathered."
+        return f"Gather_{self.gather_list}" 
+    
+    @property
+    def has_weight(self):
+        return len(self.parameters) > 0
+
+    def add_input_output(self, input: list[str], output: list[str]) -> None:
+        assert len(input) == len(self.inputs) and len(output) == len(self.outputs), "The number of input and output should be the same."
+        for idx, inp in enumerate(input):
+            self._inputs[idx].append(inp)
+        for idx, out in enumerate(output):
+            self._outputs[idx].append(out)
+
+    def update(self, map):
+        inputs = self.inputs
+        outputs = self.outputs
+        self._inputs = [[map[i]] if i in map else [i] for i in inputs]
+        self._outputs = [[map[i]] if i in map else [i] for i in outputs]
+        # print(self._inputs, self._outputs)
+    
 class Graph:
     def __init__(self):
-        self.node_list: dict[str, NodeInfo] = {}
-        self.paramter_list: dict[int, dict[str, ParameterInfo]] = {}
-        
-        self.name2para: dict[str, int] = {}
-        # FIXME: support inputs with no batch size
+        self.node_list: dict[str, Node] = {}
+        self.edge_list: dict[str, Edge] = {}
+
+        self.parameter_list: dict[str, Parameter] = {}
+        self.parameter_hash: dict[int, list[str]] = defaultdict(list)
+
         self.input: list[list[str] | str] = []
         self.output: list[list[str] | str] = []
 
-        self.name2shape: dict[str, bool] = {}
+        self.constants: dict[str, np.ndarray] = {}
 
-        self.constants: set[str] = set()
-        
-
-    def add_node(self, node: NodeInfo, name: str):
-        self.node_list[name] = node
-        try:
-            node.Can_batch = node.can_batch(self.name2shape)
-        except:
-            pass
+    def add_edge(self, edge: Edge) -> None:
+        self.edge_list[edge.name] = edge
     
-    def add_parameters(self, info: ParameterInfo, name: str):
-        if info.hash not in self.paramter_list:
-            self.paramter_list[info.hash] = { }
-        self.paramter_list[info.hash][name] = info
+    def add_constant(self, name: str, value: np.ndarray) -> None:
+        self.constants[name] = value
 
-        self.name2para[name] = info.hash
+    def add_node(self, node: Node, flag: bool = True) -> None:#, edges: dict[str, Edge]):
+        """
+        params:
+        node: 需要添加的node
+        edges: 与node相关联的数据流
+        
+        """
+        self.node_list[node.name] = node
+        if not flag:
+            return
+        edges: dict[str, Edge] = {}
+        for idx, inp in enumerate(node.inputs):
+            assert inp in self.edge_list, f"Input {inp} not in edge list. Check whether the edge is added."
+            edge = self.edge_list[inp]
+            edge.dst = node.name
+            edge.dst_index = idx
+            edges[inp] = edge
+        for idx, out in enumerate(node.outputs):
+            # print(out)
+            assert out in self.edge_list, f"Output {out} not in edge list. Check whether the edge is added."
+            edge = self.edge_list[out]
+            edge.src = node.name
+            edge.src_index = idx
+            edges[out] = edge
+        if all((edges[inp].batch_dim != -1 for inp in node.inputs)) \
+            and all((edges[out].batch_dim != -1 for out in node.outputs)):
+            node.can_batch = True        
+    
+    def add_parameters(self, info: Parameter) -> None:
+        self.parameter_list[info.name] = info
+        self.parameter_hash[info.hash].append(info.name)
 
-    def weight_is_equal(self, node1: NodeInfo, node2: NodeInfo, node1_index: int=0, node2_index: int=0) -> bool:
-        if node1.Type == node2.Type and len(node1.Parameters) == len(node2.Parameters) and node1_index == node2_index:
-            """
-            try:
-                for inp in node1.Input:
-                    if not self.name2shape[inp]:
+    def get_edge(self, name: str) -> Edge:
+        return self.edge_list[name]
+
+    def can_batch(self, node_1: Node, node_2: Node, no_weight: bool = False) -> bool:
+        if no_weight and (node_1.has_weight or node_2.has_weight):
+            return False
+        if node_1.type == node_2.type and node_1.other == node_2.other:
+            if len(node_1.input_index) == len(node_2.input_index) \
+                and len(node_1.inputs) == len(node_2.inputs) \
+                and len(node_1.outputs) == len(node_2.outputs):
+                for idx, inp_1 in enumerate(node_1.inputs):
+                    inp_2 = node_2.inputs[idx]
+                    edge_1 = self.get_edge(inp_1)
+                    edge_2 = self.get_edge(inp_2)
+                    if not (edge_1.dst_index == edge_2.dst_index and \
+                        edge_1.shape == edge_2.shape): #and \
+                        # edge_1.batch_dim != -1):
                         return False
-                for out in node1.Output:
-                    if not self.name2shape[out]:
+                for idx, out_1 in enumerate(node_1.outputs):
+                    out_2 = node_2.outputs[idx]
+                    edge_1 = self.get_edge(out_1)
+                    edge_2 = self.get_edge(out_2)
+                    if not (edge_1.src_index == edge_2.src_index and \
+                        edge_1.shape == edge_2.shape): # and \
+                        #edge_1.batch_dim != -1):
                         return False
-                for inp in node2.Input:
-                    if not self.name2shape[inp]:
+                
+                ## 相当于判断属性是否相等
+                for idx, cons_1 in enumerate(node_1.constants):
+                    cons_2 = node_2.constants[idx]
+                    if not np.array_equal(self.constants[cons_1], self.constants[cons_2]):
                         return False
-                for out in node2.Output:
-                    if not self.name2shape[out]:
-                        return False
-            except:
-                pass
-            """
-            if not node1.Can_batch:
+                return True
+            
+            else:
                 return False
-            if not node2.Can_batch:
-                return False
-            for i in range(len(node1.Parameters)):
-                hash1 = self.name2para[node1.Parameters[i]]
-                hash2 = self.name2para[node2.Parameters[i]]
-                if hash1 != hash2:
-                    return False
-                else:
-                    if self.paramter_list[hash1][node1.Parameters[i]].value.shape == self.paramter_list[hash2][node2.Parameters[i]].value.shape and \
-                        np.allclose(self.paramter_list[hash1][node1.Parameters[i]].value, self.paramter_list[hash2][node2.Parameters[i]].value):
-                        continue
-                    else:
-                        return False
-            if node1.Other != node2.Other:
-                return False
-            return True
         return False
-
-    def add_constant(self, name: str):
-        self.constants.add(name)
-        # if node1.has_weight() and node2.has_weight():
-        # #     return self.name2para[node1.Parameters[0]] == self.name2para[node2.Parameters[0]]
-        # # else:
-        # #     return False

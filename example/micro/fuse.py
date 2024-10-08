@@ -1,9 +1,11 @@
 import onnx
 import argparse
 import netron
+# import sys
+# sys.path.append("/home/xwh/project/model_fuse")
 
 from opt.converter import ONNXConverter
-from opt.pas import fuse_base, add_op, remove_op, combine
+from opt.opass import fuse_base, add_op, combine
 
 
 def get_graph(path: str, index: int):
@@ -37,5 +39,5 @@ if __name__ == '__main__':
     fuse_op_num = len(fuse_graph.node)
 
     print(f"fuse / sep = {fuse_op_num/sep_num}.")
-    converter.export_file(fuse_graph, f'./model/fuse_{model_num}.onnx')
-    netron.start(f'./model/fuse_{model_num}.onnx')
+    converter.export_file(fuse_graph, f'./model/fu_{model_num}.onnx')
+    netron.start(f'./model/fu_{model_num}.onnx')

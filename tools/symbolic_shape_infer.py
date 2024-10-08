@@ -12,6 +12,7 @@ import onnx
 import sympy
 from onnx import helper, numpy_helper, shape_inference
 from packaging import version
+import re
 
 assert version.parse(onnx.__version__) >= version.parse("1.8.0")
 
@@ -259,6 +260,11 @@ class SymbolicShapeInference:
         self.subgraph_id_ = 0
         self.prefix_ = prefix
 
+        self.dynamic = {"batch_size": sympy.Symbol("batch_size", integer=True),
+                "sequence" : sympy.Symbol("sequence_length", integer=True),
+                "height" : sympy.Symbol("height", integer=True),
+                "width" : sympy.Symbol("width", integer=True)}
+
     def _add_suggested_merge(self, symbols, apply=False):
         assert all([(type(s) == str and s in self.symbolic_dims_) or is_literal(s) for s in symbols])  # noqa: E721
         symbols = set(symbols)
@@ -448,6 +454,24 @@ class SymbolicShapeInference:
                         self.symbolic_dims_[str(new_dim)] = new_dim
 
     def _onnx_infer_single_node(self, node):
+
+        def simplify_sympy_expr(vi: onnx.ValueInfoProto):
+            dim_list = vi.type.tensor_type.shape.dim
+            for idx, dim in enumerate(dim_list):
+                param = dim.dim_param
+                param = re.sub(r'(\d+\.\d*)', lambda m: str(int(float(m.group(1)))), param)
+                if param:
+                    dim.dim_param = str(sympy.sympify(param, locals=self.dynamic))
+                    # print(dim.dim_param)
+            return vi
+        
+        def simplify_input(input: list[str]):
+            for inp in input:
+                if inp:
+                    vi = self.known_vi_[inp]
+                    vi = simplify_sympy_expr(vi)
+                    self.known_vi_[inp] = vi
+
         # skip onnx shape inference for some ops, as they are handled in _infer_*
         skip_infer = node.op_type in [
             "If",
@@ -521,7 +545,7 @@ class SymbolicShapeInference:
                         in_dims = [s[len(s) - out_rank + d] for s in in_shapes if len(s) + d >= out_rank]
                         if len(in_dims) > 1:
                             self._check_merged_dims(in_dims, allow_broadcast=True)
-
+            simplify_input(node.input)
             # run single node inference with self.known_vi_ shapes
             tmp_graph = helper.make_graph(
                 [node],
@@ -535,12 +559,31 @@ class SymbolicShapeInference:
 
             self.tmp_mp_ = shape_inference.infer_shapes(self.tmp_mp_)
 
+            ## Op Broadcast 
+            if node.op_type in [
+                "Add",
+                "Sub",
+                "Mul",
+                "Div",]:
+                assert len(node.input) == 2, "Add Sub Mul Div should have 2 inputs"
+                inp_1 = list(self.known_vi_[node.input[0]].type.tensor_type.shape.dim)
+                inp_2 = list(self.known_vi_[node.input[1]].type.tensor_type.shape.dim)
+                dim_list = list(self.tmp_mp_.graph.output[0].type.tensor_type.shape.dim)
+                for idx, dim in enumerate(dim_list):
+                    if "unk" in str(dim):
+                        inp_1_dim = inp_1[idx].dim_param
+                        inp_2_dim = inp_2[idx].dim_param
+                        inp_1_sym = sympy.sympify(inp_1_dim)
+                        inp_2_sym = sympy.sympify(inp_2_dim)
+                        output_sym = sympy.Max(inp_1_sym, inp_2_sym)
+                        dim_list[idx].dim_param = str(output_sym)
+                
         for i_o in range(len(node.output)):
             o = node.output[i_o]
             if o:  # skip optional output
                 vi = self.out_mp_.graph.value_info.add()
                 if not skip_infer:
-                    vi.CopyFrom(self.tmp_mp_.graph.output[i_o])
+                    vi.CopyFrom(simplify_sympy_expr(self.tmp_mp_.graph.output[i_o]))
                 else:
                     vi.name = o
                 self.known_vi_[o] = vi
@@ -2662,10 +2705,8 @@ class SymbolicShapeInference:
                     if i.name in names:
                         names.remove(i.name)
             return names
-
         for n in self.tmp_mp_.graph.node:
             prereq_for_node[n.output[0]] = get_prereq(n)
-
         # topological sort nodes, note there might be dead nodes so we check if all graph outputs are reached to terminate
         sorted_nodes = []
         sorted_known_vi = {i.name for i in list(self.out_mp_.graph.input) + list(self.out_mp_.graph.initializer)}
@@ -2685,9 +2726,7 @@ class SymbolicShapeInference:
                     [o.name in sorted_known_vi for o in self.out_mp_.graph.output]
                 ):
                     raise Exception("Invalid model with cyclic graph")
-
-        for node in sorted_nodes:
-            assert all([i in self.known_vi_ for i in node.input if i])
+        for idx, node in enumerate(sorted_nodes):
             self._onnx_infer_single_node(node)
             known_aten_op = False
             if node.op_type in self.dispatcher_:
@@ -2749,11 +2788,9 @@ class SymbolicShapeInference:
                     # Skip symbolic shape inference for RotaryEmbedding functions that have extraneous outputs
                     # generated by `export_modules_as_functions`
                     continue
-
                 vi = self.known_vi_[node.output[i_o]]
                 out_type = vi.type
                 out_type_kind = out_type.WhichOneof("value")
-
                 # do not process shape for non-tensors
                 if out_type_kind not in ["tensor_type", "sparse_tensor_type", None]:
                     if self.verbose_ > 2:
@@ -2776,6 +2813,7 @@ class SymbolicShapeInference:
                     continue
 
                 out_shape = get_shape_from_value_info(vi)
+
                 out_type_undefined = out_type.tensor_type.elem_type == onnx.TensorProto.UNDEFINED
                 if self.verbose_ > 2:
                     logger.debug(
@@ -2783,7 +2821,6 @@ class SymbolicShapeInference:
                     )
                     if node.output[i_o] in self.sympy_data_:
                         logger.debug("  Sympy Data: " + str(self.sympy_data_[node.output[i_o]]))  # noqa: G003
-
                 # onnx >= 1.11.0, use unk__#index instead of None when the shape dim is uncertain
                 if (
                     out_shape is not None and (None in out_shape or self._is_shape_contains_none_dim(out_shape))
@@ -2840,6 +2877,8 @@ class SymbolicShapeInference:
                                 # if a tensor has a lower rank (dim_idx[idx] < 0), it would automatically broadcast and need no merge
                                 dim_idx = [len(s) - len(out_shape) + idx for s in shapes]
                                 if len(dim_idx) > 0:
+                                    if idx == 23:
+                                        1
                                     self._add_suggested_merge(
                                         [
                                             s[i] if is_literal(s[i]) else str(s[i])
@@ -2933,13 +2972,15 @@ class SymbolicShapeInference:
             # onnx.save_model(symbolic_shape_inference.out_mp_, "sym_shape_infer_temp.onnx", save_as_external_data=True)
             # raise Exception("Incomplete symbolic shape inference")
             print("Incomplete symbolic shape inference")
+
+        # return shape_inference.infer_shapes(symbolic_shape_inference.out_mp_)
         return symbolic_shape_inference.out_mp_
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input", required=True, help="The input model file")
-    parser.add_argument("--output", help="The output model file")
+    parser.add_argument("--input",  help="The input model file", default="/home/xwh/project/model_fuse/tools/lora/model.onnx")
+    parser.add_argument("--output", help="The output model file", default="/home/xwh/project/model_fuse/tools/lora/new_model.onnx")
     parser.add_argument(
         "--auto_merge",
         help="Automatically merge symbolic dims when confliction happens",
