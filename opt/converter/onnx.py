@@ -27,7 +27,11 @@ class ONNXConverter(Converter):
         para_index = []
         constants = []
         constants_index = []
+        empty_index = []
         for idx, inp in enumerate(node_input):
+            if not inp:
+                empty_index.append(idx)
+                continue
             if inp not in graph.parameter_list:
                 if inp not in graph.constants:
                     new_input.append(inp)
@@ -38,7 +42,7 @@ class ONNXConverter(Converter):
             else:
                 parameters.append(inp)
                 para_index.append(idx)
-        return Node(node_name, node_type, new_input, node_output, parameters,constants, node_other,input_index=input_index + para_index + constants_index, domain=node_domain)
+        return Node(node_name, node_type, new_input, node_output, parameters,constants, len(empty_index), node_other,input_index=input_index + para_index + constants_index + empty_index, domain=node_domain)
 
     def get_parameter(self, init: onnx.TensorProto, graph: onnx.GraphProto, ) -> Parameter:
         tensor_name = init.name
@@ -76,12 +80,12 @@ class ONNXConverter(Converter):
         return [concat_1,] # + concat_2 + shape_op
         merge = onnx.helper.make_node('Merge', inputs=node_input, outputs=node_output, name=name)
         return [merge]
-    
+     
     ## 这里我们需要首先创建几个 Gather节点，这里我们先假设Route节点只有一个
     def info2node(self, node: Node,) -> onnx.NodeProto:
         if not (node.type == "Merge" or node.type == "Route"):
             # print(node.name, node.type, node.inputs, node.parameters, node.constants, node.input_index)
-            assert len(node.inputs) + len(node.parameters) + len(node.constants) == len(node.input_index)
+            assert len(node.inputs) + len(node.parameters) + len(node.constants) + node.empty == len(node.input_index)
             index_list = node.input_index
             node_input = [''] * len(node.input_index)
             index = 0
@@ -93,6 +97,9 @@ class ONNXConverter(Converter):
                 index += 1
             for constant in node.constants:
                 node_input[index_list[index]] = constant
+                index += 1
+            for _ in range(node.empty):
+                node_input[index_list[index]] = ''
                 index += 1
         else:
             node_input = node.inputs

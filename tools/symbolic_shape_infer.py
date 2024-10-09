@@ -334,6 +334,9 @@ class SymbolicShapeInference:
                 for i in self.out_mp_.graph.initializer
             }
         )
+        self.known_vi_.update({
+            i.name: i for i in list(self.out_mp_.graph.output)
+        })
 
     def _merge_symbols(self, dims):
         if not all([type(d) == str for d in dims]):  # noqa: E721
@@ -558,7 +561,6 @@ class SymbolicShapeInference:
             self.tmp_mp_.graph.CopyFrom(tmp_graph)
 
             self.tmp_mp_ = shape_inference.infer_shapes(self.tmp_mp_)
-
             ## Op Broadcast 
             if node.op_type in [
                 "Add",
@@ -587,6 +589,22 @@ class SymbolicShapeInference:
                 else:
                     vi.name = o
                 self.known_vi_[o] = vi
+        if node.op_type == 'Flatten':
+            dim_list = []
+            for dim in self.known_vi_[node.input[0]].type.tensor_type.shape.dim:
+                if dim.dim_param:
+                    dim_list.append(sympy.sympify(dim.dim_param))
+                else:
+                    dim_list.append(sympy.sympify(dim.dim_value))
+            axis = node.attribute[0].i
+            new_list = []
+            new_list.append(str(sympy.Mul(*dim_list[:axis])))
+            new_list.append(str(sympy.Mul(*dim_list[axis:])))
+            for idx, dim in enumerate(self.known_vi_[node.output[0]].type.tensor_type.shape.dim):
+                if 'unk' in dim.dim_param:
+                    dim.dim_param = new_list[idx]
+            # print(self.known_vi_[node.output[0]].type.tensor_type.shape.dim)
+                
 
     def _onnx_infer_subgraph(self, node, subgraph, use_node_input=True, inc_subgraph_id=True):
         if self.verbose_ > 2:

@@ -111,7 +111,7 @@ def remove_identity(graph: Graph):
         del graph.node_list[key]
 
 
-def fuse_other(graph: Graph) -> bool:
+def fuse_other(graph: Graph, model_num: int = 2) -> bool:
     """
     可以泛化到多个输出的情况
 
@@ -154,6 +154,7 @@ def fuse_other(graph: Graph) -> bool:
 
             for eqset in equivalent_sets:
                 if len(eqset) > 1:
+                # if len(eqset) == model_num:
                     has_change = True
                     for eqs in eqset:
                         if eqs not in graph.node_list:
@@ -211,6 +212,7 @@ def fuse_other(graph: Graph) -> bool:
 
             for eqset in equivalent_sets:
                 if len(eqset) > 1:
+                # if len(eqset) == model_num:
                     has_change = True
                     op = graph.node_list[eqset[0]]
                     op_input = [[inp] for inp in op.inputs]

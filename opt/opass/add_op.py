@@ -14,7 +14,7 @@ def add_op(graph: Graph, no_batch_input: list[int] | None = None, no_batch_outpu
             for idx, inp in enumerate(node_info._inputs):
                 assert len(inp) > 1, "Input should have more than one element."
                 axis = graph.edge_list[inp[0]].batch_dim
-                assert axis != -1, "Batch dimension should be specified."
+                # assert axis != -1, "Batch dimension should be specified."
                 new_name = f"{node_name}_{idx}_merge"
                 merge_op = Node(new_name,'Merge', inp, [new_name + '_m1o2c3'], [], [], axis=axis)
                 graph.node_list[node_name]._inputs[idx] = [new_name + '_m1o2c3']
@@ -23,7 +23,7 @@ def add_op(graph: Graph, no_batch_input: list[int] | None = None, no_batch_outpu
             for idx, out in enumerate(node_info._outputs):
                 assert len(out) > 1, "Output should have more than one element."
                 axis = graph.edge_list[out[0]].batch_dim
-                assert axis != -1, "Batch dimension should be specified."
+                # assert axis != -1, "Batch dimension should be specified."
                 new_name = f"{node_name}_{idx}_route"
                 split_op = Node(new_name, 'Route', [new_name + '_m1o2c3'], out, [], [], axis=axis)
                 split_op.gather_list = get_group(out)

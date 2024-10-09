@@ -45,7 +45,7 @@ class Parameter:
 
 
 class Node: 
-    def __init__(self, name: str, type: str, inputs: list[str], outputs: list[str], parameters: list[str], constants: list[str], other: Any = None, input_index: list[int] | None = None, can_batch: bool = False, domain: str | None = None, axis: int = -1):
+    def __init__(self, name: str, type: str, inputs: list[str], outputs: list[str], parameters: list[str], constants: list[str], empty: int = 0,other: Any = None, input_index: list[int] | None = None, can_batch: bool = False, domain: str | None = None, axis: int = -1):
         self.name = name
         self.type = type
         self._inputs = [[inp] for inp in inputs]
@@ -59,6 +59,8 @@ class Node:
         self.fuse = False
         self.axis = axis
         self.gather_list = []
+        self.empty = empty
+        
 
     @property
     def inputs(self):
@@ -134,7 +136,9 @@ class Graph:
             return
         edges: dict[str, Edge] = {}
         for idx, inp in enumerate(node.inputs):
-            assert inp in self.edge_list, f"Input {inp} not in edge list. Check whether the edge is added."
+            if inp not in self.edge_list: # 输入可能为空
+                continue
+            # assert inp in self.edge_list, f"Input {inp} not in edge list. Check whether the edge is added."
             edge = self.edge_list[inp]
             edge.dst = node.name
             edge.dst_index = idx
@@ -168,6 +172,8 @@ class Graph:
                     inp_2 = node_2.inputs[idx]
                     edge_1 = self.get_edge(inp_1)
                     edge_2 = self.get_edge(inp_2)
+                    # if edge_1.batch_dim == -1:
+                    #     return False
                     if not (edge_1.dst_index == edge_2.dst_index and \
                         edge_1.shape == edge_2.shape): #and \
                         # edge_1.batch_dim != -1):
@@ -176,6 +182,8 @@ class Graph:
                     out_2 = node_2.outputs[idx]
                     edge_1 = self.get_edge(out_1)
                     edge_2 = self.get_edge(out_2)
+                    # if edge_1.batch_dim == -1:
+                    #     return False
                     if not (edge_1.src_index == edge_2.src_index and \
                         edge_1.shape == edge_2.shape): # and \
                         #edge_1.batch_dim != -1):
