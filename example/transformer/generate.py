@@ -3,15 +3,18 @@ import torch
 from peft import get_peft_model, LoraConfig, TaskType
 from torch import nn
 import os
+from copy import deepcopy
 
+if not os.path.exists('./org_model'):
+    os.makedirs('./org_model')
 if not os.path.exists('./model'):
     os.makedirs('./model')
 
 torch.random.manual_seed(0)
 
-model = LlamaForCausalLM.from_pretrained('/Users/xwh/model/Llama-2-7b-chat-hf',use_safetensors=False)
+model = LlamaForCausalLM.from_pretrained('/data/xwh/CodeLlama-7b-Instruct-hf',use_safetensors=False)
 
-decoder_layer_1 = model.model.layers
+decoder_layer_1 = deepcopy(model.model.layers)
 
 peft_config = LoraConfig(
     task_type=TaskType.CAUSAL_LM, 
@@ -48,9 +51,9 @@ pos_tensor = torch.arange(10).unsqueeze(0)
 
 torch.onnx.export(model_1,
                   (input_tensor,pos_tensor),
-                  "./model/model_1.onnx",
+                  "./org_model/model_1.onnx",
                   export_params=True,
-                  opset_version=14,
+                  opset_version=15,
                   input_names=['hidden_states', 'position_ids'],
                   output_names=['output'],
                   dynamic_axes={'hidden_states': {0: 'batch_size', 1: 'sequence_length'},
@@ -59,9 +62,9 @@ torch.onnx.export(model_1,
 
 torch.onnx.export(model_2,
                   (input_tensor,pos_tensor),
-                  "./model/model_2.onnx",
+                  "./org_model/model_2.onnx",
                   export_params=True,
-                  opset_version=14,
+                  opset_version=15,
                   input_names=['hidden_states', 'position_ids'],
                   output_names=['output'],
                   dynamic_axes={'hidden_states': {0: 'batch_size', 1: 'sequence_length'},

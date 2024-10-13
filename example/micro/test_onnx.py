@@ -5,7 +5,7 @@ import numpy as np
 def run_model():
     so = ort.SessionOptions()
 
-    onnx_model = onnx.load('model_1.onnx')
+    onnx_model = onnx.load('./model/model_1.onnx')
 
     sess = ort.InferenceSession(onnx_model.SerializeToString(), so, providers=['CPUExecutionProvider'])
 

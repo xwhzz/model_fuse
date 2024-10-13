@@ -66,3 +66,5 @@ We provide a script `./tools/constant_to_initializer.py` that converts `Constant
 # TODO
 - [ ] Generalize input assumptions to handle multiple inputs
 - [ ] Refactor the single Route Op into multiple specialized Route Ops.
+- [ ] Fix height = 256 and width = 256 to obeserve the effect.
+
