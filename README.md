@@ -1,11 +1,5 @@
 # Assumptions
 
-For an operator to be eligible for fusion, it must meet the following conditions:
-
-1. It has only one input, excluding `Constant` and `initializer` type tensors.
-2. It has only one output.
-3. The first dimension of both input and output shapes is annotated with "batch_size".
-
 Therefore, we must first perform a more accurate shape inference, i.e., `symbolic shape infer`. Run the following command:
 
 ```bash
