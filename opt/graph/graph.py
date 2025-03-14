@@ -45,7 +45,7 @@ class Parameter:
 
 
 class Node: 
-    def __init__(self, name: str, type: str, inputs: list[str], outputs: list[str], parameters: list[str], constants: list[str], empty: int = 0,other: Any = None, input_index: list[int] | None = None, can_batch: bool = False, domain: str | None = None, axis: int = -1):
+    def __init__(self, name: str, type: str, inputs: list[str], outputs: list[str], parameters: list[str], constants: list[str], empty: int = 0,other: Any = None, input_index: list[int] | None = None, can_batch: bool = False, domain: str | None = None, axis: int = -1, ad: bool = False):
         self.name = name
         self.type = type
         self._inputs = [[inp] for inp in inputs]
@@ -60,6 +60,7 @@ class Node:
         self.axis = axis
         self.gather_list = []
         self.empty = empty
+        self.ad = ad
         
 
     @property
@@ -129,7 +130,6 @@ class Graph:
         params:
         node: 需要添加的node
         edges: 与node相关联的数据流
-        
         """
         self.node_list[node.name] = node
         if not flag:
@@ -162,6 +162,8 @@ class Graph:
         return self.edge_list[name]
 
     def can_batch(self, node_1: Node, node_2: Node, no_weight: bool = False) -> bool:
+        if node_1.ad or node_2.ad:
+            return False
         if no_weight and (node_1.has_weight or node_2.has_weight):
             return False
         if node_1.type == node_2.type and node_1.other == node_2.other:

@@ -5,7 +5,7 @@ import netron
 # sys.path.append("/home/xwh/project/model_fuse")
 
 from opt.converter import ONNXConverter
-from opt.opass import fuse_base, add_op, combine
+from opt.passes import fuse_base, add_op, combine
 
 
 def get_graph(path: str, index: int):
