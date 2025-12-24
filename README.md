@@ -9,7 +9,7 @@ For an operator to be eligible for fusion, it must meet the following conditions
 Therefore, we must first perform a more accurate shape inference, i.e., `symbolic shape infer`. Run the following command:
 
 ```bash
-python ./tools/symbolic_shape_infer.py --input [input model path] --output [output model path]
+python ./tools/symbolic_shape_infer.py --input [input model path] --output [output model path] 
 ```
 
 # Usage
