@@ -1,0 +1,52 @@
+name: Performance Regression Bot
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  pr-regression:
+    name: Performance regression test between PR and main
+    if: |
+      github.event.issue.pull_request &&
+      (contains(github.event.comment.body, '@regression-perf'))
+    runs-on: [ubuntu-latest]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: refs/pull/${{ github.event.issue.number }}/merge
+          fetch-depth: 0
+          submodules: recursive
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          update-environment: true
+          cache: pip
+          cache-dependency-path: |
+            pyproject.toml
+            requirements*.txt
+
+      - name: Get commenter permission
+        id: perm
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const username = context.payload.comment.user.login
+            const { owner, repo } = context.repo
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username })
+            core.setOutput('permission', data.permission) // admin|maintain|write|triage|read|none
+      
+      - name: Reject if not allowed
+        if: ${{ steps.perm.outputs.permission != 'admin' && steps.perm.outputs.permission != 'maintain' && steps.perm.outputs.permission != 'write' }}
+        run: |
+          echo "Not authorized: permission=${{ steps.perm.outputs.permission }}"
+          exit 1
