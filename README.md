@@ -11,7 +11,7 @@ Therefore, we must first perform a more accurate shape inference, i.e., `symboli
 ```bash
 python ./tools/symbolic_shape_infer.py --input [input model path] --output [output model path]
 ```
-
+just
 # Usage
 
 1. Download the onnxruntime project from https://github.com/microsoft/onnxruntime and build it from source by executing the following commands:
