@@ -11,11 +11,32 @@ permissions:
   pull-requests: write
 
 jobs:
-  pr-regression:
-    name: Performance regression test between PR and main
+  permissions-check:
+    name: Check bot permissions
     if: |
       github.event.issue.pull_request &&
       (contains(github.event.comment.body, '@regression-perf'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get commenter permission
+        id: perm
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const username = context.payload.comment.user.login
+            const { owner, repo } = context.repo
+            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username })
+            core.setOutput('permission', data.permission) // admin|maintain|write|triage|read|none
+
+      - name: Reject if not allowed
+        if: ${{ steps.perm.outputs.permission != 'admin' && steps.perm.outputs.permission != 'maintain' && steps.perm.outputs.permission != 'write' }}
+        run: |
+          echo "Not authorized: permission=${{ steps.perm.outputs.permission }}"
+          exit 1
+          
+  pr-regression:
+    name: Performance regression test between PR and main
+    needs: [permissions-check]
     runs-on: [ubuntu-latest]
     steps:
       - name: Checkout repository
@@ -35,18 +56,4 @@ jobs:
             pyproject.toml
             requirements*.txt
 
-      - name: Get commenter permission
-        id: perm
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const username = context.payload.comment.user.login
-            const { owner, repo } = context.repo
-            const { data } = await github.rest.repos.getCollaboratorPermissionLevel({ owner, repo, username })
-            core.setOutput('permission', data.permission) // admin|maintain|write|triage|read|none
-      
-      - name: Reject if not allowed
-        if: ${{ steps.perm.outputs.permission != 'admin' && steps.perm.outputs.permission != 'maintain' && steps.perm.outputs.permission != 'write' }}
-        run: |
-          echo "Not authorized: permission=${{ steps.perm.outputs.permission }}"
-          exit 1
+
